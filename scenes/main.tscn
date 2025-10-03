@@ -215,3 +215,54 @@ text = "Side Bet: next flip = last"
 
 [node name="SideBetAmount" type="SpinBox" parent="SideRow"]
 layout_mode = 2
+
+[node name="TopRow" type="HBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 428.0
+offset_top = 26.0
+offset_right = 475.0
+offset_bottom = 57.0
+
+[node name="ShopBtn" type="Button" parent="TopRow"]
+layout_mode = 2
+text = "Shop"
+
+[node name="Shop" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 480.0
+offset_bottom = 270.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.5, 0.5)
+
+[node name="ItemsBox" type="VBoxContainer" parent="Shop"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 40.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="FundsLabel" type="Label" parent="Shop"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 23.0
+grow_horizontal = 2
+
+[node name="CloseBtn" type="Button" parent="Shop"]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -31.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "Close"
