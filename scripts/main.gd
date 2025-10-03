@@ -1,4 +1,4 @@
-extends Node
+extends Control
 
 # ==== GAME STATE ====
 enum GameState { READY, ANIMATING, DOUBLE_DECISION }
@@ -30,38 +30,38 @@ var coin_single_mult: float = 2.0                   # fair coin pays 2x per flip
 var rng := RandomNumberGenerator.new()
 
 # ==== NODE REFS (adjust if your scene differs) ====
-@onready var lbl_balance: Label          = $"UI/Root/Balance"
-@onready var lbl_result: Label           = $"UI/Root/Result"
-@onready var lbl_jackpot: Label          = get_node_or_null("UI/Root/Jackpot")
+@onready var lbl_balance: Label          = $Balance
+@onready var lbl_result: Label           = $Result
+@onready var lbl_jackpot: Label          = get_node_or_null("Jackpot")
 
-@onready var spin_bet: SpinBox           = $"UI/Root/BetRow/Bet"
-@onready var btn_flip: Button            = $"UI/Root/FlipBtn"
-@onready var flip_bar: ProgressBar       = get_node_or_null("UI/Root/FlipBar")
+@onready var spin_bet: SpinBox           = $BetRow/Bet
+@onready var btn_flip: Button            = $FlipBtn
+@onready var flip_bar: ProgressBar       = get_node_or_null("FlipBar")
 
 # Quick pick (optional convenience)
-@onready var btn_heads: Button           = get_node_or_null("UI/Root/PickRow/PickHeads")
-@onready var btn_tails: Button           = get_node_or_null("UI/Root/PickRow/PickTails")
+@onready var btn_heads: Button           = get_node_or_null("PickRow/PickHeads")
+@onready var btn_tails: Button           = get_node_or_null("PickRow/PickTails")
 
 # Sequence prediction UI
-@onready var spin_seq_len: SpinBox       = get_node_or_null("UI/Root/SeqRow/SeqLen")
-@onready var choices_root: Node          = get_node_or_null("UI/Root/SeqRow/Choices")  # holds Choice0..Choice4 (Buttons)
+@onready var spin_seq_len: SpinBox       = get_node_or_null("SeqRow/SeqLen")
+@onready var choices_root: Node          = get_node_or_null("SeqRow/Choices")  # holds Choice0..Choice4 (Buttons)
 
 # Coin type selector
-@onready var opt_coin: OptionButton      = get_node_or_null("UI/Root/CoinRow/CoinType")
+@onready var opt_coin: OptionButton      = get_node_or_null("CoinRow/CoinType")
 
 # Side bet UI
-@onready var chk_side_same: CheckButton  = get_node_or_null("UI/Root/SideRow/SideSameAsLast")
-@onready var spin_side_amt: SpinBox      = get_node_or_null("UI/Root/SideRow/SideBetAmount")
+@onready var chk_side_same: CheckButton  = get_node_or_null("SideRow/SideSameAsLast")
+@onready var spin_side_amt: SpinBox      = get_node_or_null("SideRow/SideBetAmount")
 
 # Risk Row (Double-or-Nothing tiers)
-@onready var row_risk: Control           = $"UI/Root/RiskRow"
-@onready var btn_double2x: Button        = get_node_or_null("UI/Root/RiskRow/Double2x")
-@onready var btn_double3x: Button        = get_node_or_null("UI/Root/RiskRow/Double3x")
-@onready var btn_double5x: Button        = get_node_or_null("UI/Root/RiskRow/Double5x")
-@onready var btn_cashout: Button         = $"UI/Root/RiskRow/CashOutBtn"
+@onready var row_risk: Control           = $RiskRow
+@onready var btn_double2x: Button        = get_node_or_null("RiskRow/Double2x")
+@onready var btn_double3x: Button        = get_node_or_null("RiskRow/Double3x")
+@onready var btn_double5x: Button        = get_node_or_null("RiskRow/Double5x")
+@onready var btn_cashout: Button         = $RiskRow/CashOutBtn
 
 # Optional reset
-@onready var btn_reset: Button           = get_node_or_null("UI/Root/ResetBtn")
+@onready var btn_reset: Button           = get_node_or_null("ResetBtn")
 
 func _ready() -> void:
 	rng.randomize()
@@ -213,6 +213,8 @@ func _on_flip_pressed() -> void:
 		return
 
 	# Lock inputs & prep
+	balance -= current_bet
+	_update_balance()
 	state = GameState.ANIMATING
 	_set_inputs_enabled(false)
 	row_risk.visible = false
@@ -292,7 +294,6 @@ func _on_flip_pressed() -> void:
 		state = GameState.DOUBLE_DECISION
 	else:
 		# Lose base bet
-		balance -= current_bet
 		_update_balance()
 		lbl_result.text = "Outcome: %s — You LOST $%d.%s" % [
 			_seq_to_text(outcomes), current_bet, side_msg

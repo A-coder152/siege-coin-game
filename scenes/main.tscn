@@ -2,20 +2,16 @@
 
 [ext_resource type="Script" uid="uid://b80jol3mo4x8m" path="res://scripts/main.gd" id="1_o5qli"]
 
-[node name="Main" type="Node"]
-script = ExtResource("1_o5qli")
-
-[node name="UI" type="CanvasLayer" parent="."]
-
-[node name="Root" type="Control" parent="UI"]
+[node name="Root" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+script = ExtResource("1_o5qli")
 
-[node name="Title" type="Label" parent="UI/Root"]
+[node name="Title" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
@@ -26,13 +22,13 @@ offset_bottom = 23.0
 grow_horizontal = 2
 text = "Coin Flip: Double or Nothing"
 
-[node name="Balance" type="Label" parent="UI/Root"]
+[node name="Balance" type="Label" parent="."]
 layout_mode = 1
 offset_right = 116.0
 offset_bottom = 23.0
 text = "Balance: $1000"
 
-[node name="BetRow" type="HBoxContainer" parent="UI/Root"]
+[node name="BetRow" type="HBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 4
 anchor_top = 0.5
@@ -42,30 +38,30 @@ offset_right = 121.0
 offset_bottom = 55.0
 grow_vertical = 2
 
-[node name="BetLabel" type="Label" parent="UI/Root/BetRow"]
+[node name="BetLabel" type="Label" parent="BetRow"]
 layout_mode = 2
 text = "Bet:"
 
-[node name="Bet" type="SpinBox" parent="UI/Root/BetRow"]
+[node name="Bet" type="SpinBox" parent="BetRow"]
 layout_mode = 2
 max_value = 100000.0
 
-[node name="PickRow" type="HBoxContainer" parent="UI/Root"]
+[node name="PickRow" type="HBoxContainer" parent="."]
 layout_mode = 0
 offset_left = 1.0
 offset_top = 202.0
 offset_right = 106.0
 offset_bottom = 242.0
 
-[node name="PickHeads" type="Button" parent="UI/Root/PickRow"]
+[node name="PickHeads" type="Button" parent="PickRow"]
 layout_mode = 2
 text = "Heads"
 
-[node name="PickTails" type="Button" parent="UI/Root/PickRow"]
+[node name="PickTails" type="Button" parent="PickRow"]
 layout_mode = 2
 text = "Tails"
 
-[node name="FlipBtn" type="Button" parent="UI/Root"]
+[node name="FlipBtn" type="Button" parent="."]
 layout_mode = 0
 offset_left = 132.0
 offset_top = 205.0
@@ -73,7 +69,8 @@ offset_right = 172.0
 offset_bottom = 236.0
 text = "Flip!"
 
-[node name="RiskRow" type="HBoxContainer" parent="UI/Root"]
+[node name="RiskRow" type="HBoxContainer" parent="."]
+visible = false
 layout_mode = 1
 anchors_preset = 6
 anchor_left = 1.0
@@ -86,28 +83,28 @@ offset_bottom = 1.0
 grow_horizontal = 0
 grow_vertical = 2
 
-[node name="DoubleBtn" type="Button" parent="UI/Root/RiskRow"]
+[node name="DoubleBtn" type="Button" parent="RiskRow"]
 visible = false
 layout_mode = 2
 text = "Double or Nothing"
 
-[node name="CashOutBtn" type="Button" parent="UI/Root/RiskRow"]
+[node name="CashOutBtn" type="Button" parent="RiskRow"]
 layout_mode = 2
 text = "Cash Out"
 
-[node name="Double2x" type="Button" parent="UI/Root/RiskRow"]
+[node name="Double2x" type="Button" parent="RiskRow"]
 layout_mode = 2
 text = "2x"
 
-[node name="Double3x" type="Button" parent="UI/Root/RiskRow"]
+[node name="Double3x" type="Button" parent="RiskRow"]
 layout_mode = 2
 text = "3x"
 
-[node name="Double5x" type="Button" parent="UI/Root/RiskRow"]
+[node name="Double5x" type="Button" parent="RiskRow"]
 layout_mode = 2
 text = "5x"
 
-[node name="Result" type="Label" parent="UI/Root"]
+[node name="Result" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
@@ -121,7 +118,7 @@ grow_horizontal = 2
 grow_vertical = 0
 text = "Result"
 
-[node name="FlipBar" type="ProgressBar" parent="UI/Root"]
+[node name="FlipBar" type="ProgressBar" parent="."]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
@@ -135,7 +132,7 @@ offset_bottom = 13.5
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Jackpot" type="Label" parent="UI/Root"]
+[node name="Jackpot" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
@@ -145,7 +142,7 @@ offset_bottom = 23.0
 grow_horizontal = 0
 text = "Jackpot: $0"
 
-[node name="SeqRow" type="VBoxContainer" parent="UI/Root"]
+[node name="SeqRow" type="VBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
@@ -159,49 +156,49 @@ offset_bottom = -48.0
 grow_horizontal = 0
 grow_vertical = 0
 
-[node name="SeqLabel" type="Label" parent="UI/Root/SeqRow"]
+[node name="SeqLabel" type="Label" parent="SeqRow"]
 layout_mode = 2
 text = "Sequence:"
 
-[node name="SeqLen" type="SpinBox" parent="UI/Root/SeqRow"]
+[node name="SeqLen" type="SpinBox" parent="SeqRow"]
 layout_mode = 2
 min_value = 1.0
 max_value = 5.0
 value = 1.0
 
-[node name="Choices" type="HBoxContainer" parent="UI/Root/SeqRow"]
+[node name="Choices" type="HBoxContainer" parent="SeqRow"]
 layout_mode = 2
 
-[node name="Choice0" type="Button" parent="UI/Root/SeqRow/Choices"]
+[node name="Choice0" type="Button" parent="SeqRow/Choices"]
 layout_mode = 2
 
-[node name="Choice1" type="Button" parent="UI/Root/SeqRow/Choices"]
+[node name="Choice1" type="Button" parent="SeqRow/Choices"]
 layout_mode = 2
 
-[node name="Choice2" type="Button" parent="UI/Root/SeqRow/Choices"]
+[node name="Choice2" type="Button" parent="SeqRow/Choices"]
 layout_mode = 2
 
-[node name="Choice3" type="Button" parent="UI/Root/SeqRow/Choices"]
+[node name="Choice3" type="Button" parent="SeqRow/Choices"]
 layout_mode = 2
 
-[node name="Choice4" type="Button" parent="UI/Root/SeqRow/Choices"]
+[node name="Choice4" type="Button" parent="SeqRow/Choices"]
 layout_mode = 2
 
-[node name="CoinRow" type="HBoxContainer" parent="UI/Root"]
+[node name="CoinRow" type="HBoxContainer" parent="."]
 layout_mode = 0
 offset_left = 1.0
 offset_top = 98.0
 offset_right = 81.0
 offset_bottom = 138.0
 
-[node name="CoinLabel" type="Label" parent="UI/Root/CoinRow"]
+[node name="CoinLabel" type="Label" parent="CoinRow"]
 layout_mode = 2
 text = "Coin: "
 
-[node name="CoinType" type="OptionButton" parent="UI/Root/CoinRow"]
+[node name="CoinType" type="OptionButton" parent="CoinRow"]
 layout_mode = 2
 
-[node name="SideRow" type="HBoxContainer" parent="UI/Root"]
+[node name="SideRow" type="HBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
@@ -212,9 +209,9 @@ offset_right = 149.0
 offset_bottom = 58.0
 grow_horizontal = 2
 
-[node name="SameSideAsLast" type="CheckBox" parent="UI/Root/SideRow"]
+[node name="SameSideAsLast" type="CheckBox" parent="SideRow"]
 layout_mode = 2
 text = "Side Bet: next flip = last"
 
-[node name="SideBetAmount" type="SpinBox" parent="UI/Root/SideRow"]
+[node name="SideBetAmount" type="SpinBox" parent="SideRow"]
 layout_mode = 2
