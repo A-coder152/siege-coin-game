@@ -60,6 +60,9 @@ const SAVE_PATH := "user://save.cfg"
 @onready var btn_flip: Button            = $BetModal/FlipBtn
 @onready var flip_bar: ProgressBar       = get_node_or_null("FlipBar")
 
+@onready var btn_one_bet: Button         = $BetModal/ChoiceRow/OneBtn
+@onready var btn_multi_bet: Button       = $BetModal/ChoiceRow/MultiBtn
+
 @onready var btn_heads: Button           = get_node_or_null("BetModal/PickRow/PickHeads")
 @onready var btn_tails: Button           = get_node_or_null("BetModal/PickRow/PickTails")
 
@@ -88,6 +91,10 @@ const SAVE_PATH := "user://save.cfg"
 @onready var shop_items_box: VBoxContainer   = get_node_or_null("Shop/ItemsBox")
 @onready var lbl_funds_shop: Label           = get_node_or_null("Shop/FundsLabel")
 @onready var btn_shop_close: Button          = get_node_or_null("Shop/CloseBtn")
+
+@onready var coin: Sprite2D = $Coin
+var tex_heads: Texture2D = preload("res://images/siegecoin.png")
+var tex_tails: Texture2D = preload("res://images/siegecoin_tails.png")
 
 # Keep references to buy buttons to update state
 var _shop_buttons := {}
@@ -123,6 +130,9 @@ func _wire_base_ui() -> void:
 	if flip_bar:
 		flip_bar.visible = false
 		flip_bar.value = 0
+	
+	btn_one_bet.pressed.connect(_on_one_bet_pressed)
+	btn_multi_bet.pressed.connect(_on_multi_bet_pressed)
 
 func _init_coin_menu() -> void:
 	if not opt_coin: return
@@ -217,9 +227,12 @@ func _apply_unlocks_update_ui() -> void:
 	if spin_seq_len:
 		if unlocks["multiseq"]:
 			spin_seq_len.editable = true
+			$BetModal/ChoiceRow.visible = true
+			_on_one_bet_pressed()
 		else:
 			spin_seq_len.value = 1
 			spin_seq_len.editable = false
+			$BetModal/ChoiceRow.visible = false
 	if choices_root: choices_root.visible = unlocks["multiseq"]
 
 	# Biased coins
@@ -309,9 +322,9 @@ func _on_flip_pressed() -> void:
 	var L := _get_seq_len()
 	for i in L:
 		lbl_result.text = "Flipping %d/%d…" % [i + 1, L]
-		if flip_bar:
-			await _animate_progress(0.4)
-		outcomes.append(_flip_once())
+		var o := _flip_once()                 # decide outcome using your coin odds
+		await _animate_coin_flip_to(o, 2 + rng.randi_range(0, 2), 0.4 + rng.randf()*0.25)
+		outcomes.append(o)
 	if flip_bar:
 		flip_bar.visible = false
 
@@ -421,6 +434,15 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 		_set_inputs_enabled(true)
 	_save_progress()
 
+func _on_one_bet_pressed():
+	row_seq.visible = false
+	$BetModal/PickRow.visible = true
+	spin_seq_len.value = 1
+
+func _on_multi_bet_pressed():
+	row_seq.visible = true
+	$BetModal/PickRow.visible = false
+
 # ----------------- SAVE / LOAD -----------------
 func _save_progress() -> void:
 	var cfg := ConfigFile.new()
@@ -472,8 +494,8 @@ func _sync_choice_buttons() -> void:
 			var b: Button = c
 			b.visible = i < L
 			if i < L:
-				b.text = "	   " if predicted_seq[i] == "heads" else "🪙"
-				b.icon = preload("res://images/siegecoin.png") if predicted_seq[i] == "heads" else null
+				b.text = "     "
+				b.icon = preload("res://images/siegecoin.png") if predicted_seq[i] == "heads" else preload("res://images/siegecoin_tails.png")
 			i += 1
 
 func _ensure_choice_buttons() -> void:
@@ -540,3 +562,80 @@ func _animate_progress(duration: float) -> void:
 		t += dt
 		if flip_bar:
 			flip_bar.value = clamp((t / duration) * flip_bar.max_value, 0.0, flip_bar.max_value)
+
+func _current_coin_face() -> String:
+	if not coin or not coin.texture:
+		return ""
+	if tex_heads and coin.texture == tex_heads:
+		return "heads"
+	if tex_tails and coin.texture == tex_tails:
+		return "tails"
+	return ""
+
+func _set_coin_face(face: String) -> void:
+	if not coin: return
+	if face == "heads" and tex_heads:
+		coin.texture = tex_heads
+	elif face == "tails" and tex_tails:
+		coin.texture = tex_tails
+	#coin.scale = Vector2(130. / coin.texture.get_width(),120. / coin.texture.get_height())
+
+# Flip animation that ends on the requested outcome.
+# spins = how many “full flips” to show before the landing half-flip.
+# duration = total time for the whole animation (seconds).
+func _animate_coin_flip_to(outcome: String, spins: int = 3, duration: float = 0.6) -> void:
+	if not coin or (not tex_heads) or (not tex_tails):
+		# fallback to old progress bar if textures/sprite missing
+		if flip_bar:
+			await _animate_progress(duration)
+		else:
+			await get_tree().create_timer(duration).timeout
+		_set_coin_face(outcome)
+		return
+
+	# Ensure we start on a valid face
+	if _current_coin_face() == "":
+		_set_coin_face("heads")
+
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+	# We animate scale.x: -> 0 (edge) -> 1 (flat), swapping texture at the edge.
+	# Each “flip” is two halves. We’ll do (spins) full flips + a final half if needed to land on the outcome.
+	var half := duration / float(spins * 2 + 1)  # +1 reserved for the landing half
+	coin.scale = Vector2(130. / coin.texture.get_width(),120. / coin.texture.get_height())
+	
+
+	# Do the showy spins (texture swaps each half)
+	for i in spins:
+		tween.tween_callback(func():
+			# swap face mid-flip
+			var now := _current_coin_face()
+			_set_coin_face( "tails" if now == "heads" else "heads" ))
+		tween.tween_property(coin, "scale:y", 0.001, half)  # squash to edge
+		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half)   # back to flat
+
+	# If the current face isn’t the desired outcome, do one landing half-flip to set it
+	if _current_coin_face() != outcome and spins % 2 == 0 or _current_coin_face() == outcome and spins % 2 == 1:
+		tween.tween_callback(func(): _set_coin_face(outcome))
+		tween.tween_property(coin, "scale:y", 0.001, half)
+		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half)
+
+	# Optional: tiny settle bounce
+	#tween.tween_property(coin, "scale:y", 115. / coin.texture.get_height(), 0.06)
+	#tween.play()
+	#await tween.finished
+	#tween.stop()
+	#tween.tween_property(coin, "scale:y", 120. / coin.texture.get_height(), 0.06)
+	#tween.play()
+
+	await tween.finished
+	tween.kill()
+
+func get_coin_dims(result="tails"):
+	if result == "heads":
+		print("he")
+		return Vector2(130./512, 130./473)
+	else:
+		print("ta")
+		return Vector2(130./512, 130./512)

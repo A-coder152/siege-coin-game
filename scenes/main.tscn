@@ -35,13 +35,16 @@ layout_mode = 1
 anchors_preset = 4
 anchor_top = 0.5
 anchor_bottom = 0.5
-offset_top = -104.0
-offset_right = 121.0
-offset_bottom = 106.0
+offset_left = 10.0
+offset_top = -63.0
+offset_right = 131.0
+offset_bottom = 147.0
 grow_vertical = 2
+scale = Vector2(0.6, 0.6)
 alignment = 1
 
 [node name="ChoiceRow" type="HBoxContainer" parent="BetModal"]
+visible = false
 layout_mode = 2
 
 [node name="OneBtn" type="Button" parent="BetModal/ChoiceRow"]
@@ -290,3 +293,7 @@ offset_top = -31.0
 grow_horizontal = 2
 grow_vertical = 0
 text = "Close"
+
+[node name="Coin" type="Sprite2D" parent="."]
+position = Vector2(240, 137)
+scale = Vector2(0.1, 0.1)
