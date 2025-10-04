@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3 uid="uid://mtymjpquybb2"]
+[gd_scene load_steps=3 format=3 uid="uid://mtymjpquybb2"]
 
 [ext_resource type="Script" uid="uid://b80jol3mo4x8m" path="res://scripts/main.gd" id="1_o5qli"]
+
+[sub_resource type="Theme" id="Theme_o5qli"]
 
 [node name="Root" type="Control"]
 layout_mode = 3
@@ -28,45 +30,103 @@ offset_right = 116.0
 offset_bottom = 23.0
 text = "Balance: $1000"
 
-[node name="BetRow" type="HBoxContainer" parent="."]
+[node name="BetModal" type="VBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 4
 anchor_top = 0.5
 anchor_bottom = 0.5
-offset_top = 15.0
+offset_top = -104.0
 offset_right = 121.0
-offset_bottom = 55.0
+offset_bottom = 106.0
 grow_vertical = 2
+alignment = 1
 
-[node name="BetLabel" type="Label" parent="BetRow"]
+[node name="ChoiceRow" type="HBoxContainer" parent="BetModal"]
+layout_mode = 2
+
+[node name="OneBtn" type="Button" parent="BetModal/ChoiceRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "One"
+
+[node name="MultiBtn" type="Button" parent="BetModal/ChoiceRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Multi"
+
+[node name="BetRow" type="HBoxContainer" parent="BetModal"]
+layout_mode = 2
+
+[node name="BetLabel" type="Label" parent="BetModal/BetRow"]
 layout_mode = 2
 text = "Bet:"
 
-[node name="Bet" type="SpinBox" parent="BetRow"]
+[node name="Bet" type="SpinBox" parent="BetModal/BetRow"]
 layout_mode = 2
+theme = SubResource("Theme_o5qli")
 max_value = 100000.0
 
-[node name="PickRow" type="HBoxContainer" parent="."]
-layout_mode = 0
-offset_left = 1.0
-offset_top = 202.0
-offset_right = 106.0
-offset_bottom = 242.0
-
-[node name="PickHeads" type="Button" parent="PickRow"]
+[node name="SeqRow" type="VBoxContainer" parent="BetModal"]
 layout_mode = 2
+
+[node name="SeqLabel" type="Label" parent="BetModal/SeqRow"]
+layout_mode = 2
+text = "Sequence:"
+
+[node name="SeqLen" type="SpinBox" parent="BetModal/SeqRow"]
+layout_mode = 2
+min_value = 1.0
+max_value = 5.0
+value = 1.0
+
+[node name="Choices" type="HBoxContainer" parent="BetModal/SeqRow"]
+layout_mode = 2
+
+[node name="Choice0" type="Button" parent="BetModal/SeqRow/Choices"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+icon_alignment = 1
+expand_icon = true
+
+[node name="Choice1" type="Button" parent="BetModal/SeqRow/Choices"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+icon_alignment = 1
+expand_icon = true
+
+[node name="Choice2" type="Button" parent="BetModal/SeqRow/Choices"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+icon_alignment = 1
+expand_icon = true
+
+[node name="Choice3" type="Button" parent="BetModal/SeqRow/Choices"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+icon_alignment = 1
+expand_icon = true
+
+[node name="Choice4" type="Button" parent="BetModal/SeqRow/Choices"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 9
+icon_alignment = 1
+expand_icon = true
+
+[node name="PickRow" type="HBoxContainer" parent="BetModal"]
+layout_mode = 2
+
+[node name="PickHeads" type="Button" parent="BetModal/PickRow"]
+layout_mode = 2
+size_flags_horizontal = 3
 text = "Heads"
 
-[node name="PickTails" type="Button" parent="PickRow"]
+[node name="PickTails" type="Button" parent="BetModal/PickRow"]
 layout_mode = 2
+size_flags_horizontal = 3
 text = "Tails"
 
-[node name="FlipBtn" type="Button" parent="."]
-layout_mode = 0
-offset_left = 132.0
-offset_top = 205.0
-offset_right = 172.0
-offset_bottom = 236.0
+[node name="FlipBtn" type="Button" parent="BetModal"]
+layout_mode = 2
 text = "Flip!"
 
 [node name="RiskRow" type="HBoxContainer" parent="."]
@@ -142,54 +202,18 @@ offset_bottom = 23.0
 grow_horizontal = 0
 text = "Jackpot: $0"
 
-[node name="SeqRow" type="VBoxContainer" parent="."]
+[node name="CoinRow" type="HBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -125.0
-offset_top = -118.0
-offset_right = -1.0
-offset_bottom = -48.0
+offset_left = -80.0
+offset_top = -96.0
+offset_bottom = -56.0
 grow_horizontal = 0
 grow_vertical = 0
-
-[node name="SeqLabel" type="Label" parent="SeqRow"]
-layout_mode = 2
-text = "Sequence:"
-
-[node name="SeqLen" type="SpinBox" parent="SeqRow"]
-layout_mode = 2
-min_value = 1.0
-max_value = 5.0
-value = 1.0
-
-[node name="Choices" type="HBoxContainer" parent="SeqRow"]
-layout_mode = 2
-
-[node name="Choice0" type="Button" parent="SeqRow/Choices"]
-layout_mode = 2
-
-[node name="Choice1" type="Button" parent="SeqRow/Choices"]
-layout_mode = 2
-
-[node name="Choice2" type="Button" parent="SeqRow/Choices"]
-layout_mode = 2
-
-[node name="Choice3" type="Button" parent="SeqRow/Choices"]
-layout_mode = 2
-
-[node name="Choice4" type="Button" parent="SeqRow/Choices"]
-layout_mode = 2
-
-[node name="CoinRow" type="HBoxContainer" parent="."]
-layout_mode = 0
-offset_left = 1.0
-offset_top = 98.0
-offset_right = 81.0
-offset_bottom = 138.0
 
 [node name="CoinLabel" type="Label" parent="CoinRow"]
 layout_mode = 2
@@ -209,7 +233,7 @@ offset_right = 149.0
 offset_bottom = 58.0
 grow_horizontal = 2
 
-[node name="SameSideAsLast" type="CheckBox" parent="SideRow"]
+[node name="SideSameAsLast" type="CheckButton" parent="SideRow"]
 layout_mode = 2
 text = "Side Bet: next flip = last"
 

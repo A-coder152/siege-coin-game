@@ -56,16 +56,16 @@ const SAVE_PATH := "user://save.cfg"
 @onready var lbl_result: Label           = $Result
 @onready var lbl_jackpot: Label          = get_node_or_null("Jackpot")
 
-@onready var spin_bet: SpinBox           = $BetRow/Bet
-@onready var btn_flip: Button            = $FlipBtn
+@onready var spin_bet: SpinBox           = $BetModal/BetRow/Bet
+@onready var btn_flip: Button            = $BetModal/FlipBtn
 @onready var flip_bar: ProgressBar       = get_node_or_null("FlipBar")
 
-@onready var btn_heads: Button           = get_node_or_null("PickRow/PickHeads")
-@onready var btn_tails: Button           = get_node_or_null("PickRow/PickTails")
+@onready var btn_heads: Button           = get_node_or_null("BetModal/PickRow/PickHeads")
+@onready var btn_tails: Button           = get_node_or_null("BetModal/PickRow/PickTails")
 
-@onready var row_seq: Control            = get_node_or_null("SeqRow")
-@onready var spin_seq_len: SpinBox       = get_node_or_null("SeqRow/SeqLen")
-@onready var choices_root: Node          = get_node_or_null("SeqRow/Choices")
+@onready var row_seq: Control            = get_node_or_null("BetModal/SeqRow")
+@onready var spin_seq_len: SpinBox       = get_node_or_null("BetModal/SeqRow/SeqLen")
+@onready var choices_root: Node          = get_node_or_null("BetModal/SeqRow/Choices")
 
 @onready var row_coin: Control           = get_node_or_null("CoinRow")
 @onready var opt_coin: OptionButton      = get_node_or_null("CoinRow/CoinType")
@@ -161,7 +161,7 @@ func _build_shop_ui() -> void:
 		row.add_child(name_label)
 
 		var price_label := Label.new()
-		price_label.text = "$%d" % item.price
+		price_label.text = "🪙%d" % item.price
 		price_label.custom_minimum_size = Vector2(60, 0)
 		row.add_child(price_label)
 
@@ -183,7 +183,7 @@ func _refresh_shop_buttons() -> void:
 			b.text = "Owned"
 			b.disabled = true
 		else:
-			b.text = "Buy ($%d)" % price
+			b.text = "Buy (🪙%d)" % price
 			b.disabled = balance < price
 
 func _set_shop_visible(v: bool) -> void:
@@ -208,7 +208,7 @@ func _try_buy_item(id: String) -> void:
 	_update_funds_labels()
 	_save_progress()
 	if lbl_result:
-		lbl_result.text = "Purchased '%s' for $%d!" % [id, price]
+		lbl_result.text = "Purchased '%s' for 🪙%d!" % [id, price]
 
 # ----------------- UNLOCK GATING -----------------
 func _apply_unlocks_update_ui() -> void:
@@ -241,7 +241,7 @@ func _apply_unlocks_update_ui() -> void:
 # ----------------- LABEL UPDATES -----------------
 func _update_balance() -> void:
 	if lbl_balance:
-		lbl_balance.text = "Balance: $" + str(balance)
+		lbl_balance.text = "🪙" + str(balance)
 	# Keep shop buttons accurate if shop is open
 	if shop_panel and shop_panel.visible:
 		_refresh_shop_buttons()
@@ -249,11 +249,11 @@ func _update_balance() -> void:
 
 func _update_funds_labels() -> void:
 	if lbl_funds_shop:
-		lbl_funds_shop.text = "Balance: $" + str(balance)
+		lbl_funds_shop.text = "🪙" + str(balance)
 
 func _update_jackpot() -> void:
 	if lbl_jackpot:
-		lbl_jackpot.text = "Jackpot: $" + str(jackpot)
+		lbl_jackpot.text = "Jackpot: 🪙" + str(jackpot)
 
 # ----------------- BUTTONS & CORE FLOW -----------------
 func _on_seq_len_changed(v: int) -> void:
@@ -275,6 +275,7 @@ func _on_flip_pressed() -> void:
 		return
 
 	# Side bet (only if unlocked)
+	
 	var side_on = unlocks["side"] and chk_side_same and chk_side_same.button_pressed
 	var side_amt := (int(spin_side_amt.value) if (unlocks["side"] and spin_side_amt) else 0)
 	var total_required := current_bet + (side_amt if side_on else 0)
@@ -333,9 +334,9 @@ func _on_flip_pressed() -> void:
 		if hit:
 			var side_payout := int(round(side_amt * SIDE_MULT))
 			balance += side_payout
-			side_msg = "  (Side bet hit +$%d)" % side_payout
+			side_msg = "  (Side bet hit +🪙%d)" % side_payout
 		else:
-			side_msg = "  (Side bet lost -$%d)" % side_amt
+			side_msg = "  (Side bet lost -🪙%d)" % side_amt
 		_update_balance()
 	elif side_on and last_outcome == "":
 		side_msg = "  (Side bet skipped: no last flip)"
@@ -344,7 +345,7 @@ func _on_flip_pressed() -> void:
 
 	if won:
 		win_streak += 1
-		lbl_result.text = "Outcome: %s — You WON $%d! Double or Cash Out?%s" % [
+		lbl_result.text = "Outcome: %s — You WON 🪙%d! Double or Cash Out?%s" % [
 			_seq_to_text(outcomes), pending_winnings, side_msg
 		]
 		# Jackpot payouts (only if unlocked)
@@ -360,7 +361,7 @@ func _on_flip_pressed() -> void:
 	else:
 		# Lose base bet
 		_update_balance()
-		lbl_result.text = "Outcome: %s — You LOST $%d.%s" % [
+		lbl_result.text = "Outcome: %s — You LOST 🪙%d.%s" % [
 			_seq_to_text(outcomes), current_bet, side_msg
 		]
 		win_streak = 0
@@ -375,7 +376,7 @@ func _on_cashout_pressed() -> void:
 		return
 	balance += pending_winnings
 	_update_balance()
-	lbl_result.text = "Banked $%d. Streak reset." % pending_winnings
+	lbl_result.text = "Banked 🪙%d. Streak reset." % pending_winnings
 	pending_winnings = 0
 	row_risk.visible = false
 	state = GameState.READY
@@ -400,7 +401,7 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 	if hit:
 		pending_winnings = int(round(pending_winnings * mult))
 		don_streak += 1
-		lbl_result.text = "Success! Winnings now $%d. Double again or Cash Out?" % pending_winnings
+		lbl_result.text = "Success! Winnings now 🪙%d. Double again or Cash Out?" % pending_winnings
 
 		# Jackpot for huge DoN streaks (only if unlocked)
 		if unlocks["jackpot"] and don_streak >= 10 and jackpot > 0:
@@ -413,7 +414,7 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 		row_risk.visible = true
 		state = GameState.DOUBLE_DECISION
 	else:
-		lbl_result.text = "Busted! You lost the $%d pot." % pending_winnings
+		lbl_result.text = "Busted! You lost the 🪙%d pot." % pending_winnings
 		pending_winnings = 0
 		don_streak = 0
 		state = GameState.READY
@@ -471,7 +472,8 @@ func _sync_choice_buttons() -> void:
 			var b: Button = c
 			b.visible = i < L
 			if i < L:
-				b.text = "H" if predicted_seq[i] == "heads" else "T"
+				b.text = "	   " if predicted_seq[i] == "heads" else "🪙"
+				b.icon = preload("res://images/siegecoin.png") if predicted_seq[i] == "heads" else null
 			i += 1
 
 func _ensure_choice_buttons() -> void:
