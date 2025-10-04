@@ -100,6 +100,7 @@ var tex_tails: Texture2D = preload("res://images/siegecoin_tails.png")
 var _shop_buttons := {}
 
 func _ready() -> void:
+	load("res://scripts/ThemeBuilder.gd").new().apply(self)
 	ConfigFile.new().save(SAVE_PATH)
 	rng.randomize()
 	_wire_base_ui()
@@ -411,6 +412,7 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 		flip_bar.visible = false
 
 	var hit := rng.randf() < success_prob
+	
 	if hit:
 		pending_winnings = int(round(pending_winnings * mult))
 		don_streak += 1
