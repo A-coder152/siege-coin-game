@@ -496,7 +496,7 @@ func _sync_choice_buttons() -> void:
 			var b: Button = c
 			b.visible = i < L
 			if i < L:
-				b.text = "     "
+				b.text = "            "
 				b.icon = preload("res://images/siegecoin.png") if predicted_seq[i] == "heads" else preload("res://images/siegecoin_tails.png")
 			i += 1
 
