@@ -2,17 +2,17 @@ extends Node
 class_name ThemeBuilder
 
 # ---------- Palette ----------
-const BG_DARK        := "#0B0F17"   # window background (top)
-const BG_DARK_2      := "#101827"   # window background (bottom)
+const BG_DARK        := "#000017"   # window background (top)
+const BG_DARK_2      := "#000017"   # window background (bottom)
 const SURFACE        := "#141C2A"   # panels/cards
 const BORDER         := "#263145"   # dividers/borders
-const TEXT_PRIMARY   := "#DEE6F2"   # main text (soft white-blue)
-const TEXT_SECONDARY := "#A5AEBD"
+const TEXT_PRIMARY   := "#7EE6F2"   # main text (soft white-blue)
+const TEXT_SECONDARY := "#55AEBD"
 
 # Calmer primary (teal) — less contrast-y than the neon version
-const PRI_N          := "#2B9CB3"
-const PRI_H          := "#33AABD"
-const PRI_P          := "#24859A"
+const PRI_N          := "#B32B9C"
+const PRI_H          := "#BD33AA"
+const PRI_P          := "#9A2485"
 
 # Softer accents
 const SUCCESS_N      := "#59B36B"
@@ -50,10 +50,10 @@ static func _mk_btn(col: String) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = _c(col)
 	sb.border_color = _c(col)
-	sb.corner_radius_top_left = 12
-	sb.corner_radius_top_right = 12
-	sb.corner_radius_bottom_right = 12
-	sb.corner_radius_bottom_left = 12
+	sb.corner_radius_top_left = 6
+	sb.corner_radius_top_right = 6
+	sb.corner_radius_bottom_right = 6
+	sb.corner_radius_bottom_left = 6
 	return sb
 
 static func _mk_btn_disabled(from_col: String) -> StyleBoxFlat:
@@ -145,49 +145,49 @@ static func build_theme() -> Theme:
 	return t
 
 # ---------- Background (adds a full-window gradient) ----------
-static func _make_gradient_texture() -> GradientTexture2D:
-	var grad := Gradient.new()
-	grad.remove_point(0) # ensure clean
-	grad.add_point(0.0, _c(BG_DARK))
-	grad.add_point(1.0, _c(BG_DARK_2))
-
-	var g := GradientTexture2D.new()
-	g.gradient = grad
-	g.width = 2048
-	g.height = 2048
-	g.fill = GradientTexture2D.FILL_LINEAR
-	g.fill_from = Vector2(0.0, 0.0)
-	g.fill_to = Vector2(0.0, 1.0) # vertical
-	return g
-
-static func ensure_background(root: Control) -> void:
-	if not is_instance_valid(root):
-		return
-	var existing := root.get_node_or_null("___BG")
-	if existing:
-		return
-	var tex := _make_gradient_texture()
-	var bg := TextureRect.new()
-	bg.name = "___BG"
-	bg.texture = tex
-	bg.stretch_mode = TextureRect.STRETCH_SCALE
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bg.z_index = -1024
-	bg.anchor_left = 0.0
-	bg.anchor_top = 0.0
-	bg.anchor_right = 1.0
-	bg.anchor_bottom = 1.0
-	bg.offset_left = 0
-	bg.offset_top = 0
-	bg.offset_right = 0
-	bg.offset_bottom = 0
-	# Insert as first child so everything else draws above
-	root.add_child(bg)
-	bg.move_to_front() # ensures it's at end of child list; with z_index negative it stays behind
+#static func _make_gradient_texture() -> GradientTexture2D:
+	#var grad := Gradient.new()
+	#grad.remove_point(0) # ensure clean
+	#grad.add_point(0.0, _c(BG_DARK))
+	#grad.add_point(1.0, _c(BG_DARK_2))
+#
+	#var g := GradientTexture2D.new()
+	#g.gradient = grad
+	#g.width = 2048
+	#g.height = 2048
+	#g.fill = GradientTexture2D.FILL_LINEAR
+	#g.fill_from = Vector2(0.0, 0.0)
+	#g.fill_to = Vector2(0.0, 1.0) # vertical
+	#return g
+#
+#static func ensure_background(root: Control) -> void:
+	#if not is_instance_valid(root):
+		#return
+	#var existing := root.get_node_or_null("___BG")
+	#if existing:
+		#return
+	#var tex := _make_gradient_texture()
+	#var bg := TextureRect.new()
+	#bg.name = "___BG"
+	#bg.texture = tex
+	#bg.stretch_mode = TextureRect.STRETCH_SCALE
+	#bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	#bg.z_index = -1024
+	#bg.anchor_left = 0.0
+	#bg.anchor_top = 0.0
+	#bg.anchor_right = 1.0
+	#bg.anchor_bottom = 1.0
+	#bg.offset_left = 0
+	#bg.offset_top = 0
+	#bg.offset_right = 0
+	#bg.offset_bottom = 0
+	## Insert as first child so everything else draws above
+	#root.add_child(bg)
+	#bg.move_to_front() # ensures it's at end of child list; with z_index negative it stays behind
 
 static func apply(root_control: Control, add_background: bool = true) -> void:
-	if add_background:
-		ensure_background(root_control)
+	#if add_background:
+		#ensure_background(root_control)
 	root_control.theme = build_theme()
 
 # ---------- Optional helpers for risk/success overrides ----------

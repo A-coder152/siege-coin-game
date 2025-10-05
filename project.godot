@@ -25,6 +25,10 @@ window/stretch/mode="canvas_items"
 
 enabled=PackedStringArray("res://addons/godot_super-wakatime/plugin.cfg")
 
+[gui]
+
+theme/custom_font="uid://pwqrh603vq02"
+
 [rendering]
 
 renderer/rendering_method="gl_compatibility"
