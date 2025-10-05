@@ -1,9 +1,18 @@
-[gd_scene load_steps=4 format=3 uid="uid://mtymjpquybb2"]
+[gd_scene load_steps=8 format=3 uid="uid://mtymjpquybb2"]
 
 [ext_resource type="Script" uid="uid://b80jol3mo4x8m" path="res://scripts/main.gd" id="1_o5qli"]
 [ext_resource type="Texture2D" uid="uid://cb4cc03esbx77" path="res://images/bg.png" id="2_0wfyh"]
+[ext_resource type="Texture2D" uid="uid://dwlws3wyscm4q" path="res://images/siegecoin.png" id="3_sugp2"]
+[ext_resource type="Texture2D" uid="uid://byrng3p1hebb1" path="res://images/siegecoin_tails.png" id="4_jyhfs"]
 
 [sub_resource type="Theme" id="Theme_0wfyh"]
+
+[sub_resource type="Gradient" id="Gradient_jyhfs"]
+colors = PackedColorArray(0.0627451, 0.0705882, 0.294118, 1, 0.109804, 0.0313726, 0.266667, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_tbgi4"]
+gradient = SubResource("Gradient_jyhfs")
+fill_to = Vector2(0, 1)
 
 [node name="Root" type="Control"]
 layout_mode = 3
@@ -15,7 +24,8 @@ grow_vertical = 2
 theme = SubResource("Theme_0wfyh")
 script = ExtResource("1_o5qli")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="e" type="ColorRect" parent="."]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -24,7 +34,7 @@ grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0.0941176, 1)
 
-[node name="TextureRect" type="TextureRect" parent="."]
+[node name="bg" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -55,6 +65,14 @@ offset_right = 116.0
 offset_bottom = 23.0
 text = "Balance: $1000"
 
+[node name="BetModalBg" type="TextureRect" parent="."]
+layout_mode = 2
+offset_left = 10.0
+offset_top = 69.0
+offset_right = 96.0
+offset_bottom = 207.0
+texture = SubResource("GradientTexture2D_tbgi4")
+
 [node name="BetModal" type="VBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 4
@@ -66,6 +84,7 @@ offset_right = 131.0
 offset_bottom = 147.0
 grow_vertical = 2
 scale = Vector2(0.6, 0.6)
+theme_override_constants/separation = 10
 alignment = 1
 
 [node name="ChoiceRow" type="HBoxContainer" parent="BetModal"]
@@ -140,17 +159,30 @@ icon_alignment = 1
 expand_icon = true
 
 [node name="PickRow" type="HBoxContainer" parent="BetModal"]
+custom_minimum_size = Vector2(0, 59)
 layout_mode = 2
 
-[node name="PickHeads" type="Button" parent="BetModal/PickRow"]
+[node name="PickHeads" type="TextureButton" parent="BetModal/PickRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Heads"
+texture_normal = ExtResource("3_sugp2")
+texture_pressed = ExtResource("3_sugp2")
+texture_hover = ExtResource("3_sugp2")
+texture_disabled = ExtResource("3_sugp2")
+texture_focused = ExtResource("3_sugp2")
+ignore_texture_size = true
+stretch_mode = 5
 
-[node name="PickTails" type="Button" parent="BetModal/PickRow"]
+[node name="PickTails" type="TextureButton" parent="BetModal/PickRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Tails"
+texture_normal = ExtResource("4_jyhfs")
+texture_pressed = ExtResource("4_jyhfs")
+texture_hover = ExtResource("4_jyhfs")
+texture_disabled = ExtResource("4_jyhfs")
+texture_focused = ExtResource("4_jyhfs")
+ignore_texture_size = true
+stretch_mode = 5
 
 [node name="FlipBtn" type="Button" parent="BetModal"]
 layout_mode = 2
@@ -282,7 +314,8 @@ text = "Shop"
 
 [node name="Coin" type="Sprite2D" parent="."]
 position = Vector2(240, 137)
-scale = Vector2(0.1, 0.1)
+scale = Vector2(0.25, 0.25)
+texture = ExtResource("4_jyhfs")
 
 [node name="Shop" type="Panel" parent="."]
 visible = false

@@ -63,8 +63,8 @@ const SAVE_PATH := "user://save.cfg"
 @onready var btn_one_bet: Button         = $BetModal/ChoiceRow/OneBtn
 @onready var btn_multi_bet: Button       = $BetModal/ChoiceRow/MultiBtn
 
-@onready var btn_heads: Button           = get_node_or_null("BetModal/PickRow/PickHeads")
-@onready var btn_tails: Button           = get_node_or_null("BetModal/PickRow/PickTails")
+@onready var btn_heads: TextureButton    = get_node_or_null("BetModal/PickRow/PickHeads")
+@onready var btn_tails: TextureButton    = get_node_or_null("BetModal/PickRow/PickTails")
 
 @onready var row_seq: Control            = get_node_or_null("BetModal/SeqRow")
 @onready var spin_seq_len: SpinBox       = get_node_or_null("BetModal/SeqRow/SeqLen")
