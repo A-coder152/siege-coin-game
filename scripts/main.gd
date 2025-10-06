@@ -21,7 +21,7 @@ const JACKPOT_TAX := 0.05  # grows the jackpot; does NOT charge the player
 
 # Side bet
 var last_outcome: String = ""
-# (per-side-bet multipliers now come from SIDEBET_DB by level)
+# (fair, bias-aware multipliers are computed at runtime)
 
 # Coin types (driven by equipped coin)
 var coin_heads_bias: float = 0.5
@@ -30,7 +30,6 @@ var coin_single_mult: float = 2.0
 var rng := RandomNumberGenerator.new()
 
 # ==== FEATURE UNLOCKS (keep simple feature gates like before) ====
-# These are still purchasable "features" (separate from coins/sidebets).
 var unlocks := {
 	"streaks": false,
 	"multiseq": false,
@@ -45,19 +44,14 @@ const SHOP_ITEMS := [
 	{"id":"jackpot","name":"Jackpot","price":250,"desc":"A growing pot that pays on rare feats."}
 ]
 
-# ==== NEW: COINS & SIDE BETS (unlock + upgrade + equip) ====
-# Replace paths with your art; ResourceLoader.exists() checks at runtime.
+# ==== COINS & SIDE BETS (unlock + upgrade + equip) ====
 const COIN_DB := {
 	"yellow": {
 		"name":"Yellow (Fair)", "unlock":100, "level_max":5,
 		"bias":[0.50,0.50,0.50,0.50,0.50],
 		"mult":[2.00,2.05,2.10,2.15,2.20],
-		"tex_heads":[
-			"res://images/siegecoin.png"
-		],
-		"tex_tails":[
-			"res://images/siegecoin_tails.png"
-		]
+		"tex_heads":[ "res://images/siegecoin.png" ],
+		"tex_tails":[ "res://images/siegecoin_tails.png" ]
 	},
 	"lucky": {
 		"name":"Lucky (Bias Heads)", "unlock":150, "level_max":5,
@@ -83,25 +77,29 @@ const COIN_DB := {
 	}
 }
 
+# NEW: expanded meta bets (fair, bias-aware)
 const SIDEBET_DB := {
-	"same_last": { # pays if first flip matches last round's final flip
-		"name":"Same as Previous Flip (first)", "unlock":120, "level_max":5,
-		"mult":[1.60,1.70,1.80,1.90,2.00]
-	},
-	"same_final": { # pays if final flip matches last round's final flip
-		"name":"Same as Previous Flip (final)", "unlock":140, "level_max":5,
-		"mult":[1.50,1.60,1.70,1.80,1.90]
-	}
+	# previous/round-linking (now computed fairly from bias)
+	"same_last":  {"name":"Same as Previous Flip (first)", "unlock":120, "level_max":5, "type":"match_prev_first"},
+	"same_final": {"name":"Same as Previous Flip (final)", "unlock":140, "level_max":5, "type":"match_prev_final"},
+
+	# meta bets
+	"any_heads":      {"name":"At Least 1 Heads (in sequence)", "unlock":110, "level_max":5, "type":"any_heads"},
+	"all_tails":      {"name":"All Tails",                       "unlock":120, "level_max":5, "type":"all_tails"},
+	"exact2":         {"name":"Exactly 2 Heads",                  "unlock":130, "level_max":5, "type":"exact_k", "k":2},
+	"all_same":       {"name":"All Same (all H or all T)",        "unlock":130, "level_max":5, "type":"all_same"},
+	"first_two_same": {"name":"First Two Same",                   "unlock":90,  "level_max":5, "type":"first_two_same"},
+	"alternating":    {"name":"Alternating Pattern (HTHT…)",      "unlock":160, "level_max":5, "type":"alternating"}
 }
 
 # Persistent ownership/levels (saved)
-var owned_coins : Dictionary = {}     # {"yellow": true, ...}
-var coin_level  : Dictionary = {}     # {"yellow": 1..level_max}
-var owned_sides : Dictionary = {}     # {"same_last": true, ...}
-var side_level  : Dictionary = {}     # {"same_last": 1..level_max}
+var owned_coins : Dictionary = {}
+var coin_level  : Dictionary = {}
+var owned_sides : Dictionary = {}
+var side_level  : Dictionary = {}
 
-var active_coin_id : String = ""      # equipped coin
-var active_side_id : String = ""      # equipped side bet ("" = none)
+var active_coin_id : String = ""
+var active_side_id : String = ""
 
 const SAVE_PATH := "user://save.cfg"
 
@@ -143,7 +141,7 @@ const SAVE_PATH := "user://save.cfg"
 @onready var btn_shop: Button                = get_node_or_null("TopRow/ShopBtn")
 
 @onready var shop_panel: Panel               = get_node_or_null("Shop")
-@onready var shop_items_box: VBoxContainer   = get_node_or_null("Shop/ItemsBox")
+@onready var shop_items_box: VBoxContainer   = get_node_or_null("Shop/ScrollContainer/ItemsBox")
 @onready var lbl_funds_shop: Label           = get_node_or_null("Shop/FundsLabel")
 @onready var btn_shop_close: Button          = get_node_or_null("Shop/CloseBtn")
 
@@ -212,6 +210,9 @@ func _wire_base_ui() -> void:
 	btn_one_bet.pressed.connect(_on_one_bet_pressed)
 	btn_multi_bet.pressed.connect(_on_multi_bet_pressed)
 
+	if bailout_btn:
+		bailout_btn.pressed.connect(_on_bailout_pressed)
+
 func _init_seq_ui() -> void:
 	if spin_seq_len:
 		spin_seq_len.min_value = 1
@@ -224,6 +225,29 @@ func _init_seq_ui() -> void:
 	else:
 		_on_seq_len_changed(1.0)
 
+# ----------------- SHOP UI HELPERS (spacing/readability) -----------------
+func _add_spacer(h: int) -> void:
+	var s := Control.new()
+	s.custom_minimum_size = Vector2(0, h)
+	shop_items_box.add_child(s)
+
+func _add_section_header(text: String) -> void:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 20)
+	shop_items_box.add_child(lbl)
+
+func _wrap_card(row: Control) -> PanelContainer:
+	var mc := MarginContainer.new()
+	mc.add_theme_constant_override("margin_left", 10)
+	mc.add_theme_constant_override("margin_right", 10)
+	mc.add_theme_constant_override("margin_top", 8)
+	mc.add_theme_constant_override("margin_bottom", 8)
+	mc.add_child(row)
+	var pc := PanelContainer.new()
+	pc.add_child(mc)
+	return pc
+
 # ----------------- SHOP UI (features + coins + sidebets) -----------------
 func _build_shop_ui() -> void:
 	if not shop_items_box:
@@ -232,14 +256,13 @@ func _build_shop_ui() -> void:
 		c.queue_free()
 	_shop_buttons.clear()
 
-	# ---- Feature items (legacy) ----
-	var h0 := Label.new()
-	h0.text = "Features"
-	shop_items_box.add_child(h0)
+	# ---- Feature items ----
+	_add_section_header("Features")
+	_add_spacer(6)
 
 	for item in SHOP_ITEMS:
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
+		row.add_theme_constant_override("separation", 12)
 
 		var name_label := Label.new()
 		name_label.text = str(item["name"], " — ", item["desc"])
@@ -253,21 +276,20 @@ func _build_shop_ui() -> void:
 
 		var b := Button.new()
 		row.add_child(b)
-		shop_items_box.add_child(row)
 
+		shop_items_box.add_child(_wrap_card(row))
 		_shop_buttons[item["id"]] = {"button": b, "price": item["price"]}
 		b.pressed.connect(Callable(self, "_on_shop_feature_buy_button_pressed").bind(b))
 
 	# ---- Coins ----
-	var h1 := Label.new()
-	h1.text = "Coins"
-	shop_items_box.add_child(h1)
+	_add_spacer(10)
+	_add_section_header("Coins")
+	_add_spacer(6)
 
 	for cid in COIN_DB.keys():
 		var db = COIN_DB[cid]
 		var rowc := HBoxContainer.new()
-		rowc.add_theme_constant_override("separation", 8)
-		shop_items_box.add_child(rowc)
+		rowc.add_theme_constant_override("separation", 12)
 
 		var owned = owned_coins.get(cid, false)
 		var lv := int(coin_level.get(cid, 0))
@@ -275,7 +297,12 @@ func _build_shop_ui() -> void:
 			lv = 1
 
 		var namec := Label.new()
-		namec.text = str(db["name"], "  ", "(Lv " + str(lv) + ")" if owned else "(Locked)")
+		var name_text := String(db["name"]) + "  "
+		if owned:
+			name_text += "(Lv " + str(lv) + ")"
+		else:
+			name_text += "(Locked)"
+		namec.text = name_text
 		namec.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rowc.add_child(namec)
 
@@ -307,21 +334,25 @@ func _build_shop_ui() -> void:
 		b2.set_meta("kind","coin")
 		b2.set_meta("id", cid)
 		b2.set_meta("action","equip")
-		b2.text = "Equipped" if (active_coin_id == cid) else "Equip"
+		var equip_txt := "Equip"
+		if active_coin_id == cid:
+			equip_txt = "Equipped"
+		b2.text = equip_txt
 		b2.disabled = not owned
 		rowc.add_child(b2)
 		b2.pressed.connect(Callable(self,"_on_shop_btn_pressed").bind(b2))
 
+		shop_items_box.add_child(_wrap_card(rowc))
+
 	# ---- Side Bets ----
-	var h2 := Label.new()
-	h2.text = "Side Bets"
-	shop_items_box.add_child(h2)
+	_add_spacer(10)
+	_add_section_header("Side Bets")
+	_add_spacer(6)
 
 	for sid in SIDEBET_DB.keys():
 		var sdb = SIDEBET_DB[sid]
 		var rows := HBoxContainer.new()
-		rows.add_theme_constant_override("separation", 8)
-		shop_items_box.add_child(rows)
+		rows.add_theme_constant_override("separation", 12)
 
 		var owned2 = owned_sides.get(sid, false)
 		var lv2 := int(side_level.get(sid, 0))
@@ -329,7 +360,12 @@ func _build_shop_ui() -> void:
 			lv2 = 1
 
 		var names := Label.new()
-		names.text = str(sdb["name"], "  ", "(Lv " + str(lv2) + ")" if owned2 else "(Locked)")
+		var sb_text := String(sdb["name"]) + "  "
+		if owned2:
+			sb_text += "(Lv " + str(lv2) + ")"
+		else:
+			sb_text += "(Locked)"
+		names.text = sb_text
 		names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rows.add_child(names)
 
@@ -359,10 +395,15 @@ func _build_shop_ui() -> void:
 		a2.set_meta("kind","side")
 		a2.set_meta("id", sid)
 		a2.set_meta("action","equip")
-		a2.text = "Equipped" if (active_side_id == sid) else "Equip"
+		var sb_equip_txt := "Equip"
+		if active_side_id == sid:
+			sb_equip_txt = "Equipped"
+		a2.text = sb_equip_txt
 		a2.disabled = not owned2
 		rows.add_child(a2)
 		a2.pressed.connect(Callable(self,"_on_shop_btn_pressed").bind(a2))
+
+		shop_items_box.add_child(_wrap_card(rows))
 
 	_update_funds_labels()
 	_refresh_shop_buttons()
@@ -384,7 +425,8 @@ func _on_shop_feature_buy_button_pressed(btn: Button) -> void:
 			lbl_result.text = "Not enough balance for " + id + "."
 		return
 	balance -= price
-	if balance == 0: bailout_btn.visible = true
+	if balance == 0:
+		bailout_btn.visible = true
 	unlocks[id] = true
 	_update_balance()
 	_apply_unlocks_update_ui()
@@ -436,7 +478,8 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost := int(COIN_DB[id]["unlock"])
 			if balance < cost: return
 			balance -= cost
-			if balance == 0: bailout_btn.visible = true
+			if balance == 0:
+				bailout_btn.visible = true
 			owned_coins[id] = true
 			coin_level[id] = 1
 			if active_coin_id == "":
@@ -450,7 +493,8 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost2 := _coin_upgrade_cost(id, nxt)
 			if balance < cost2: return
 			balance -= cost2
-			if balance == 0: bailout_btn.visible = true
+			if balance == 0:
+				bailout_btn.visible = true
 			coin_level[id] = nxt
 			if active_coin_id == id:
 				_apply_active_coin_stats()
@@ -466,7 +510,8 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost3 := int(SIDEBET_DB[id]["unlock"])
 			if balance < cost3: return
 			balance -= cost3
-			if balance == 0: bailout_btn.visible = true
+			if balance == 0:
+				bailout_btn.visible = true
 			owned_sides[id] = true
 			side_level[id] = 1
 			if active_side_id == "":
@@ -478,7 +523,8 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost4 := _side_upgrade_cost(id, nxt2)
 			if balance < cost4: return
 			balance -= cost4
-			if balance == 0: bailout_btn.visible = true
+			if balance == 0:
+				bailout_btn.visible = true
 			side_level[id] = nxt2
 		elif action == "equip":
 			if owned_sides.get(id, false):
@@ -492,7 +538,8 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 # ----------------- UNLOCK GATING / VISIBILITY -----------------
 func _apply_unlocks_update_ui() -> void:
 	# Multi-sequence
-	if row_seq: row_seq.visible = unlocks["multiseq"]
+	if row_seq:
+		row_seq.visible = unlocks["multiseq"]
 	if spin_seq_len:
 		if unlocks["multiseq"]:
 			spin_seq_len.editable = true
@@ -502,18 +549,24 @@ func _apply_unlocks_update_ui() -> void:
 			spin_seq_len.value = 1
 			spin_seq_len.editable = false
 			$BetModal/ChoiceRow.visible = false
-	if choices_root: choices_root.visible = unlocks["multiseq"]
+	if choices_root:
+		choices_root.visible = unlocks["multiseq"]
 
 	# Old coin row is deprecated: hide & disable
-	if row_coin: row_coin.visible = false
-	if opt_coin: opt_coin.disabled = true
+	if row_coin:
+		row_coin.visible = false
+	if opt_coin:
+		opt_coin.disabled = true
 
 	# Risk tiers beyond 2x
-	if btn_double4x: btn_double4x.visible = unlocks["risk"]
-	if btn_double8x: btn_double8x.visible = unlocks["risk"]
+	if btn_double4x:
+		btn_double4x.visible = unlocks["risk"]
+	if btn_double8x:
+		btn_double8x.visible = unlocks["risk"]
 
 	# Jackpot label
-	if lbl_jackpot: lbl_jackpot.visible = unlocks["jackpot"]
+	if lbl_jackpot:
+		lbl_jackpot.visible = unlocks["jackpot"]
 
 	_refresh_feature_visibility()
 
@@ -545,19 +598,23 @@ func _on_seq_len_changed(v: float) -> void:
 	_sync_choice_buttons()
 
 func _on_pick_heads_pressed() -> void:
+	$BetModal/MBSpacer/HeadsShower.color = Color("#b43ee1", 1) 
+	$BetModal/MBSpacer/TailsShower.color = Color("#b43ee1", 0)
 	_set_all_choices("heads")
 
 func _on_pick_tails_pressed() -> void:
+	$BetModal/MBSpacer/HeadsShower.color = Color("#b43ee1", 0) 
+	$BetModal/MBSpacer/TailsShower.color = Color("#b43ee1", 1)
 	_set_all_choices("tails")
 
 func _on_double2x_pressed() -> void:
 	_on_double_tier_pressed(2.0, 0.50)
 
 func _on_double4x_pressed() -> void:
-	_on_double_tier_pressed(3.0, 0.3333)
+	_on_double_tier_pressed(4.0, 0.25)
 
 func _on_double8x_pressed() -> void:
-	_on_double_tier_pressed(5.0, 0.20)
+	_on_double_tier_pressed(8.0, 0.125)
 
 func _on_flip_pressed() -> void:
 	if state != GameState.READY:
@@ -590,7 +647,8 @@ func _on_flip_pressed() -> void:
 
 	# Lock inputs & deduct base bet up front
 	balance -= current_bet
-	if balance == 0: bailout_btn.visible = true
+	if balance == 0:
+		bailout_btn.visible = true
 	_update_balance()
 	state = GameState.ANIMATING
 	_set_inputs_enabled(false)
@@ -608,7 +666,8 @@ func _on_flip_pressed() -> void:
 	# Deduct side bet upfront
 	if side_on and side_amt > 0:
 		balance -= side_amt
-		if balance == 0: bailout_btn.visible = true
+		if balance == 0:
+			bailout_btn.visible = true
 		_update_balance()
 
 	# Run sequence
@@ -634,22 +693,15 @@ func _on_flip_pressed() -> void:
 				bonus_mult = 1.25
 		pending_winnings = int(round(current_bet * base_mult * bonus_mult))
 
-	# Resolve side bet (rule depends on active_side_id)
+	# Resolve side bet (fair, bias-aware)
 	var side_msg := ""
 	if side_on:
-		if last_outcome == "":
-			side_msg = "  (Side bet skipped: no last flip)"
+		var prob := _side_probability(active_side_id, L)
+		if prob <= 0.0:
+			side_msg = "  (Side bet skipped)"
 		else:
-			var hit := false
-			var s_lv := int(side_level.get(active_side_id, 1))
-			s_lv = clamp(s_lv, 1, int(SIDEBET_DB[active_side_id]["level_max"]))
-			var mult := float(SIDEBET_DB[active_side_id]["mult"][s_lv - 1])
-
-			if active_side_id == "same_last":
-				hit = (outcomes[0] == last_outcome)
-			elif active_side_id == "same_final":
-				hit = (outcomes[L - 1] == last_outcome)
-
+			var hit := _side_hit(active_side_id, outcomes, L)
+			var mult := _fair_multiplier(prob)
 			if hit:
 				var side_payout := int(round(side_amt * mult))
 				balance += side_payout
@@ -710,8 +762,10 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 		flip_bar.visible = false
 
 	var hit := rng.randf() < success_prob
-	await _animate_coin_flip_to("heads" if hit else "tails", 2 + rng.randi_range(0, 2), 0.4 + rng.randf()*0.25)
-	
+	var show_face := "tails"
+	if hit:
+		show_face = "heads"
+	await _animate_coin_flip_to(show_face, 2 + rng.randi_range(0, 2), 0.4 + rng.randf()*0.25)
 
 	if hit:
 		pending_winnings = int(round(pending_winnings * mult))
@@ -746,6 +800,8 @@ func _on_one_bet_pressed():
 		spin_seq_len.value = 1
 
 func _on_multi_bet_pressed():
+	$BetModal/MBSpacer/HeadsShower.color = Color("#b43ee1", 0) 
+	$BetModal/MBSpacer/TailsShower.color = Color("#b43ee1", 0)
 	if row_seq:
 		row_seq.visible = true
 	var pr := get_node_or_null("BetModal/PickRow")
@@ -870,6 +926,128 @@ func _ensure_predicted_capacity() -> void:
 		predicted_seq.append("heads")
 	seq_len = L
 
+# --- Fair side-bet math ---
+func _nCk(n: int, k: int) -> int:
+	if k < 0 or k > n:
+		return 0
+	if k > n - k:
+		k = n - k
+	var r := 1
+	for i in range(1, k + 1):
+		r = int(r * (n - k + i) / i)
+	return r
+
+func _side_probability(id: String, L: int) -> float:
+	if not SIDEBET_DB.has(id):
+		return 0.0
+	var t := String(SIDEBET_DB[id].get("type", ""))
+	var p := coin_heads_bias
+	var q := 1.0 - p
+
+	match t:
+		"match_prev_first", "match_prev_final":
+			if last_outcome == "":
+				return 0.0
+			if last_outcome == "heads":
+				return p
+			else:
+				return q
+
+		"any_heads":
+			return 1.0 - pow(q, L)
+
+		"all_tails":
+			return pow(q, L)
+
+		"exact_k":
+			var k := int(SIDEBET_DB[id].get("k", 1))
+			if k < 0 or k > L:
+				return 0.0
+			return float(_nCk(L, k)) * pow(p, k) * pow(q, L - k)
+
+		"all_same":
+			return pow(p, L) + pow(q, L)
+
+		"first_two_same":
+			if L < 2:
+				return 1.0
+			return (p * p) + (q * q)
+
+		"alternating":
+			if L <= 1:
+				return 1.0
+			var a := (L + 1) / 2
+			var b := L / 2
+			return pow(p, a) * pow(q, b) + pow(q, a) * pow(p, b)
+
+		_:
+			return 0.0
+
+func _side_hit(id: String, outcomes: Array[String], L: int) -> bool:
+	if not SIDEBET_DB.has(id):
+		return false
+	var t := String(SIDEBET_DB[id].get("type", ""))
+
+	match t:
+		"match_prev_first":
+			if last_outcome == "" or L <= 0:
+				return false
+			return outcomes[0] == last_outcome
+
+		"match_prev_final":
+			if last_outcome == "" or L <= 0:
+				return false
+			return outcomes[L - 1] == last_outcome
+
+		"any_heads":
+			for o in outcomes:
+				if o == "heads":
+					return true
+			return false
+
+		"all_tails":
+			for o in outcomes:
+				if o != "tails":
+					return false
+			return true
+
+		"exact_k":
+			var k := int(SIDEBET_DB[id].get("k", 1))
+			var cnt := 0
+			for o in outcomes:
+				if o == "heads":
+					cnt += 1
+			return cnt == k
+
+		"all_same":
+			if L == 0:
+				return false
+			var first := outcomes[0]
+			for o in outcomes:
+				if o != first:
+					return false
+			return true
+
+		"first_two_same":
+			if L < 2:
+				return true
+			return outcomes[0] == outcomes[1]
+
+		"alternating":
+			if L <= 1:
+				return true
+			for i in range(1, L):
+				if outcomes[i] == outcomes[i - 1]:
+					return false
+			return true
+
+		_:
+			return false
+
+func _fair_multiplier(prob: float) -> float:
+	prob = clamp(prob, 0.0000001, 1.0)
+	return 1.0 / prob
+
 # --- Coin application / textures ---
 func _apply_active_coin_stats() -> void:
 	if active_coin_id == "" or not COIN_DB.has(active_coin_id):
@@ -886,7 +1064,6 @@ func _load_coin_textures() -> void:
 	if not coin or active_coin_id == "" or not COIN_DB.has(active_coin_id):
 		return
 	var db = COIN_DB[active_coin_id]
-	#var lv = clamp(int(coin_level.get(active_coin_id,1)), 1, int(db["level_max"]))
 	var h_path := String(db["tex_heads"][0])
 	var t_path := String(db["tex_tails"][0])
 	if ResourceLoader.exists(h_path):
@@ -927,7 +1104,7 @@ func _animate_progress(duration: float) -> void:
 		if flip_bar:
 			flip_bar.value = clamp((t / duration) * flip_bar.max_value, 0.0, flip_bar.max_value)
 
-# --- Coin flip animation (safe, no lambdas) ---
+# --- Coin flip animation (safe, no lambdas/ternaries) ---
 func _current_coin_face() -> String:
 	if not coin or not coin.texture:
 		return ""
@@ -964,10 +1141,11 @@ func _animate_coin_flip_to(outcome: String, spins: int = 3, duration: float = 0.
 	# Ensure we start on a valid face 
 	if _current_coin_face() == "": 
 		_set_coin_face("heads") 
+	
 	var tween := create_tween() 
 	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT) 
 	# We animate scale.x: -> 0 (edge) -> 1 (flat), swapping texture at the edge. 
-	# Each “flip” is two halves. We’ll do (spins) full flips + a final half if needed to land on the outcome.
+	# Each “flip” is two halves. We’ll do (spins) full flips + a final half if needed to land on the outcome. 
 	var half := duration / float(spins * 2 + 1) # +1 reserved for the landing half 
 	coin.scale = Vector2(130. / coin.texture.get_width(),120. / coin.texture.get_height()) 
 	# Do the showy spins (texture swaps each half) 
@@ -977,21 +1155,19 @@ func _animate_coin_flip_to(outcome: String, spins: int = 3, duration: float = 0.
 			var now := _current_coin_face() 
 			_set_coin_face( "tails" if now == "heads" else "heads" )) 
 		tween.tween_property(coin, "scale:y", 0.001, half) 
-		# squash to edge 
+	# squash to edge 
 		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half) 
-		# back to flat 
-		# If the current face isn’t the desired outcome, do one landing half-flip to set it 
+	# back to flat 
+	# If the current face isn’t the desired outcome, do one landing half-flip to set it 
 	if _current_coin_face() != outcome and spins % 2 == 0 or _current_coin_face() == outcome and spins % 2 == 1: 
 		tween.tween_callback(func(): _set_coin_face(outcome)) 
 		tween.tween_property(coin, "scale:y", 0.001, half) 
 		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half) 
-		# Optional: tiny settle bounce 
-		#tween.tween_property(coin, "scale:y", 115. / coin.texture.get_height(), 0.06) 
-		#tween.play() 
-		#await tween.finished 
-		#tween.stop() 
-		#tween.tween_property(coin, "scale:y", 120. / coin.texture.get_height(), 0.06) 
-		#tween.play() 
+	# Optional: tiny settle bounce 
+	tween.tween_property(coin, "scale:y", 0.95 * get_coin_dims(outcome).y, 0.06) 
+	#tween.play() #await tween.finished #tween.stop() 
+	tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, 0.06) 
+	#tween.play()
 	await tween.finished 
 	tween.kill() 
 	
@@ -1003,7 +1179,7 @@ func get_coin_dims(result="tails"):
 		print("ta") 
 		return Vector2(130./512, 130./512)
 
-
+# --- Misc ---
 func _on_bailout_pressed() -> void:
 	balance += 1000
 	_update_balance()

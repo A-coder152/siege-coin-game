@@ -119,6 +119,7 @@ static func build_theme() -> Theme:
 	t.set_stylebox("hover",   "Button", BTN_H)
 	t.set_stylebox("pressed", "Button", BTN_P)
 	t.set_stylebox("disabled","Button", BTN_D)
+	t.set_stylebox("icon_hover_pressed_color", "CheckButton", BTN_H)
 	# Softer text on primary (not pure black, not pure white)
 	t.set_color("font_color", "Button", _c("#F1F6F9"))  # readable but not stark
 
