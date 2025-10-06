@@ -21,33 +21,87 @@ const JACKPOT_TAX := 0.05  # grows the jackpot; does NOT charge the player
 
 # Side bet
 var last_outcome: String = ""
-const SIDE_MULT := 1.9
+# (per-side-bet multipliers now come from SIDEBET_DB by level)
 
-# Coin types
+# Coin types (driven by equipped coin)
 var coin_heads_bias: float = 0.5
 var coin_single_mult: float = 2.0
 
 var rng := RandomNumberGenerator.new()
 
-# ==== UNLOCKS & SHOP ====
-# All are locked at first; players buy with balance to unlock.
+# ==== FEATURE UNLOCKS (keep simple feature gates like before) ====
+# These are still purchasable "features" (separate from coins/sidebets).
 var unlocks := {
 	"streaks": false,
 	"multiseq": false,
-	"biased": false,
 	"risk": false,
-	"side": false,
 	"jackpot": false
 }
 
 const SHOP_ITEMS := [
 	{"id":"streaks","name":"Streak Bonuses","price":100,"desc":"Bonus payout on win streaks."},
 	{"id":"multiseq","name":"Multi-Flip Predictions","price":200,"desc":"Predict 2–5 flips for higher multipliers."},
-	{"id":"biased","name":"Biased Coins","price":150,"desc":"Lucky/Cursed coin types with different odds & payouts."},
 	{"id":"risk","name":"Risk-Tier DoN","price":150,"desc":"Unlock 3x and 5x double-or-nothing tiers."},
-	{"id":"side","name":"Side Bets","price":120,"desc":"Meta bet: 'next flip = last'."},
 	{"id":"jackpot","name":"Jackpot","price":250,"desc":"A growing pot that pays on rare feats."}
 ]
+
+# ==== NEW: COINS & SIDE BETS (unlock + upgrade + equip) ====
+# Replace paths with your art; ResourceLoader.exists() checks at runtime.
+const COIN_DB := {
+	"aurora": {
+		"name":"Aurora (Fair)", "unlock":100, "level_max":5,
+		"bias":[0.50,0.50,0.50,0.50,0.50],
+		"mult":[2.00,2.05,2.10,2.15,2.20],
+		"tex_heads":[
+			"res://art/aurora/h1.png","res://art/aurora/h2.png","res://art/aurora/h3.png","res://art/aurora/h4.png","res://art/aurora/h5.png"
+		],
+		"tex_tails":[
+			"res://art/aurora/t1.png","res://art/aurora/t2.png","res://art/aurora/t3.png","res://art/aurora/t4.png","res://art/aurora/t5.png"
+		]
+	},
+	"lucky": {
+		"name":"Lucky (Bias Heads)", "unlock":150, "level_max":5,
+		"bias":[0.60,0.62,0.64,0.66,0.68],
+		"mult":[1.80,1.85,1.90,1.95,2.00],
+		"tex_heads":[
+			"res://art/lucky/h1.png","res://art/lucky/h2.png","res://art/lucky/h3.png","res://art/lucky/h4.png","res://art/lucky/h5.png"
+		],
+		"tex_tails":[
+			"res://art/lucky/t1.png","res://art/lucky/t2.png","res://art/lucky/t3.png","res://art/lucky/t4.png","res://art/lucky/t5.png"
+		]
+	},
+	"cursed": {
+		"name":"Cursed (Bias Tails)", "unlock":150, "level_max":5,
+		"bias":[0.40,0.38,0.36,0.34,0.32],
+		"mult":[2.50,2.60,2.70,2.80,2.90],
+		"tex_heads":[
+			"res://art/cursed/h1.png","res://art/cursed/h2.png","res://art/cursed/h3.png","res://art/cursed/h4.png","res://art/cursed/h5.png"
+		],
+		"tex_tails":[
+			"res://art/cursed/t1.png","res://art/cursed/t2.png","res://art/cursed/t3.png","res://art/cursed/t4.png","res://art/cursed/t5.png"
+		]
+	}
+}
+
+const SIDEBET_DB := {
+	"same_last": { # pays if first flip matches last round's final flip
+		"name":"Same as Previous Flip (first)", "unlock":120, "level_max":5,
+		"mult":[1.60,1.70,1.80,1.90,2.00]
+	},
+	"same_final": { # pays if final flip matches last round's final flip
+		"name":"Same as Previous Flip (final)", "unlock":140, "level_max":5,
+		"mult":[1.50,1.60,1.70,1.80,1.90]
+	}
+}
+
+# Persistent ownership/levels (saved)
+var owned_coins : Dictionary = {}     # {"aurora": true, ...}
+var coin_level  : Dictionary = {}     # {"aurora": 1..level_max}
+var owned_sides : Dictionary = {}     # {"same_last": true, ...}
+var side_level  : Dictionary = {}     # {"same_last": 1..level_max}
+
+var active_coin_id : String = ""      # equipped coin
+var active_side_id : String = ""      # equipped side bet ("" = none)
 
 const SAVE_PATH := "user://save.cfg"
 
@@ -70,6 +124,7 @@ const SAVE_PATH := "user://save.cfg"
 @onready var spin_seq_len: SpinBox       = get_node_or_null("BetModal/SeqRow/SeqLen")
 @onready var choices_root: Node          = get_node_or_null("BetModal/SeqRow/Choices")
 
+# Old coin selector row is deprecated (coins are now shop/equip). Hide it.
 @onready var row_coin: Control           = get_node_or_null("CoinRow")
 @onready var opt_coin: OptionButton      = get_node_or_null("CoinRow/CoinType")
 
@@ -96,83 +151,99 @@ const SAVE_PATH := "user://save.cfg"
 var tex_heads: Texture2D = preload("res://images/siegecoin.png")
 var tex_tails: Texture2D = preload("res://images/siegecoin_tails.png")
 
-# Keep references to buy buttons to update state
-var _shop_buttons := {}
+# Keep references to feature buy buttons
+var _shop_buttons := {}   # for simple feature items (not coins/sidebets)
 
 func _ready() -> void:
-	load("res://scripts/ThemeBuilder.gd").new().apply(self)
-	ConfigFile.new().save(SAVE_PATH)
+	var theme_builder := load("res://scripts/ThemeBuilder.gd")
+	if theme_builder:
+		theme_builder.new().apply(self)
 	rng.randomize()
 	_wire_base_ui()
-	_init_coin_menu()
 	_init_seq_ui()
 	_load_progress()
+
+	# Ensure a default coin if none owned
+	if owned_coins.size() == 0:
+		owned_coins["aurora"] = true
+		coin_level["aurora"] = 1
+		active_coin_id = "aurora"
+
+	_apply_active_coin_stats()
+	_load_coin_textures()
+
 	_update_balance()
 	_update_jackpot()
 	_apply_unlocks_update_ui()
 	_build_shop_ui()
 	if lbl_result:
-		lbl_result.text = "Set bet, (optionally) buy unlocks with your balance, then Flip."
+		lbl_result.text = "Set bet, upgrade/equip in the Shop, then Flip."
 
 # ----------------- INIT / WIRING -----------------
 func _wire_base_ui() -> void:
 	btn_flip.pressed.connect(_on_flip_pressed)
 	btn_cashout.pressed.connect(_on_cashout_pressed)
-	if btn_heads: btn_heads.pressed.connect(func(): _set_all_choices("heads"))
-	if btn_tails: btn_tails.pressed.connect(func(): _set_all_choices("tails"))
 
-	if btn_double2x: btn_double2x.pressed.connect(func(): _on_double_tier_pressed(2.0, 0.50))
-	if btn_double3x: btn_double3x.pressed.connect(func(): _on_double_tier_pressed(3.0, 0.3333))
-	if btn_double5x: btn_double5x.pressed.connect(func(): _on_double_tier_pressed(5.0, 0.20))
+	if btn_heads:
+		btn_heads.pressed.connect(_on_pick_heads_pressed)
+	if btn_tails:
+		btn_tails.pressed.connect(_on_pick_tails_pressed)
 
-	if btn_shop: btn_shop.pressed.connect(func(): _set_shop_visible(true))
-	if btn_shop_close: btn_shop_close.pressed.connect(func(): _set_shop_visible(false))
+	if btn_double2x:
+		btn_double2x.pressed.connect(_on_double2x_pressed)
+	if btn_double3x:
+		btn_double3x.pressed.connect(_on_double3x_pressed)
+	if btn_double5x:
+		btn_double5x.pressed.connect(_on_double5x_pressed)
+
+	if btn_shop:
+		btn_shop.pressed.connect(_on_shop_open_pressed)
+	if btn_shop_close:
+		btn_shop_close.pressed.connect(_on_shop_close_pressed)
 
 	if flip_bar:
 		flip_bar.visible = false
 		flip_bar.value = 0
-	
+
 	btn_one_bet.pressed.connect(_on_one_bet_pressed)
 	btn_multi_bet.pressed.connect(_on_multi_bet_pressed)
-
-func _init_coin_menu() -> void:
-	if not opt_coin: return
-	if opt_coin.item_count == 0:
-		opt_coin.add_item("Fair (50/50, 2.0x)", 0)
-		opt_coin.add_item("Lucky (60% Heads, 1.8x)", 1)
-		opt_coin.add_item("Cursed (40% Heads, 2.5x)", 2)
-	opt_coin.item_selected.connect(_on_coin_type_changed)
-	_apply_coin_type(0)
 
 func _init_seq_ui() -> void:
 	if spin_seq_len:
 		spin_seq_len.min_value = 1
 		spin_seq_len.max_value = 5
 		spin_seq_len.value = 1
-		spin_seq_len.value_changed.connect(func(v): _on_seq_len_changed(int(v)))
+		spin_seq_len.value_changed.connect(_on_seq_len_changed)
 	_ensure_choice_buttons()
-	_on_seq_len_changed(spin_seq_len.value if spin_seq_len else 1)
+	if spin_seq_len:
+		_on_seq_len_changed(spin_seq_len.value)
+	else:
+		_on_seq_len_changed(1.0)
 
-# ----------------- SHOP UI -----------------
+# ----------------- SHOP UI (features + coins + sidebets) -----------------
 func _build_shop_ui() -> void:
 	if not shop_items_box:
 		return
-	# clear children
 	for c in shop_items_box.get_children():
 		c.queue_free()
 	_shop_buttons.clear()
+
+	# ---- Feature items (legacy) ----
+	var h0 := Label.new()
+	h0.text = "Features"
+	shop_items_box.add_child(h0)
 
 	for item in SHOP_ITEMS:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 
 		var name_label := Label.new()
-		name_label.text = "%s — %s" % [item.name, item.desc]
+		name_label.text = str(item["name"], " — ", item["desc"])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_label)
 
 		var price_label := Label.new()
-		price_label.text = "🪙%d" % item.price
+		price_label.text = "🪙" + str(item["price"])
 		price_label.custom_minimum_size = Vector2(60, 0)
 		row.add_child(price_label)
 
@@ -180,36 +251,133 @@ func _build_shop_ui() -> void:
 		row.add_child(b)
 		shop_items_box.add_child(row)
 
-		_shop_buttons[item.id] = {"button": b, "price": item.price}
-		b.pressed.connect(func(id = item.id): _try_buy_item(id))
+		_shop_buttons[item["id"]] = {"button": b, "price": item["price"]}
+		b.pressed.connect(Callable(self, "_on_shop_feature_buy_button_pressed").bind(b))
 
-	_update_funds_labels()
-	_refresh_shop_buttons()
+	# ---- Coins ----
+	var h1 := Label.new()
+	h1.text = "Coins"
+	shop_items_box.add_child(h1)
 
-func _refresh_shop_buttons() -> void:
-	for id in _shop_buttons.keys():
-		var b: Button = _shop_buttons[id]["button"]
-		var price := int(_shop_buttons[id]["price"])
-		if unlocks.get(id, false):
-			b.text = "Owned"
-			b.disabled = true
+	for cid in COIN_DB.keys():
+		var db = COIN_DB[cid]
+		var rowc := HBoxContainer.new()
+		rowc.add_theme_constant_override("separation", 8)
+		shop_items_box.add_child(rowc)
+
+		var owned = owned_coins.get(cid, false)
+		var lv := int(coin_level.get(cid, 0))
+		if owned and lv <= 0:
+			lv = 1
+
+		var namec := Label.new()
+		namec.text = str(db["name"], "  ", "(Lv " + str(lv) + ")" if owned else "(Locked)")
+		namec.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rowc.add_child(namec)
+
+		# Unlock/Upgrade
+		var b1 := Button.new()
+		b1.set_meta("kind","coin")
+		b1.set_meta("id", cid)
+		if not owned:
+			var p := int(db["unlock"])
+			b1.text = "Unlock (🪙" + str(p) + ")"
+			b1.disabled = balance < p
+			b1.set_meta("action","unlock")
 		else:
-			b.text = "Buy (🪙%d)" % price
-			b.disabled = balance < price
+			var nxt := lv + 1
+			if nxt <= int(db["level_max"]):
+				var cost := _coin_upgrade_cost(cid, nxt)
+				b1.text = "Upgrade (🪙" + str(cost) + ")"
+				b1.disabled = balance < cost
+				b1.set_meta("action","upgrade")
+			else:
+				b1.text = "Maxed"
+				b1.disabled = true
+				b1.set_meta("action","none")
+		rowc.add_child(b1)
+		b1.pressed.connect(Callable(self,"_on_shop_btn_pressed").bind(b1))
 
-func _set_shop_visible(v: bool) -> void:
-	if not shop_panel: return
-	shop_panel.visible = v
+		# Equip
+		var b2 := Button.new()
+		b2.set_meta("kind","coin")
+		b2.set_meta("id", cid)
+		b2.set_meta("action","equip")
+		b2.text = "Equipped" if (active_coin_id == cid) else "Equip"
+		b2.disabled = not owned
+		rowc.add_child(b2)
+		b2.pressed.connect(Callable(self,"_on_shop_btn_pressed").bind(b2))
+
+	# ---- Side Bets ----
+	var h2 := Label.new()
+	h2.text = "Side Bets"
+	shop_items_box.add_child(h2)
+
+	for sid in SIDEBET_DB.keys():
+		var sdb = SIDEBET_DB[sid]
+		var rows := HBoxContainer.new()
+		rows.add_theme_constant_override("separation", 8)
+		shop_items_box.add_child(rows)
+
+		var owned2 = owned_sides.get(sid, false)
+		var lv2 := int(side_level.get(sid, 0))
+		if owned2 and lv2 <= 0:
+			lv2 = 1
+
+		var names := Label.new()
+		names.text = str(sdb["name"], "  ", "(Lv " + str(lv2) + ")" if owned2 else "(Locked)")
+		names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rows.add_child(names)
+
+		var a1 := Button.new()
+		a1.set_meta("kind","side")
+		a1.set_meta("id", sid)
+		if not owned2:
+			var p2 := int(sdb["unlock"])
+			a1.text = "Unlock (🪙" + str(p2) + ")"
+			a1.disabled = balance < p2
+			a1.set_meta("action","unlock")
+		else:
+			var nxt2 := lv2 + 1
+			if nxt2 <= int(sdb["level_max"]):
+				var cost2 := _side_upgrade_cost(sid, nxt2)
+				a1.text = "Upgrade (🪙" + str(cost2) + ")"
+				a1.disabled = balance < cost2
+				a1.set_meta("action","upgrade")
+			else:
+				a1.text = "Maxed"
+				a1.disabled = true
+				a1.set_meta("action","none")
+		rows.add_child(a1)
+		a1.pressed.connect(Callable(self,"_on_shop_btn_pressed").bind(a1))
+
+		var a2 := Button.new()
+		a2.set_meta("kind","side")
+		a2.set_meta("id", sid)
+		a2.set_meta("action","equip")
+		a2.text = "Equipped" if (active_side_id == sid) else "Equip"
+		a2.disabled = not owned2
+		rows.add_child(a2)
+		a2.pressed.connect(Callable(self,"_on_shop_btn_pressed").bind(a2))
+
 	_update_funds_labels()
 	_refresh_shop_buttons()
 
-func _try_buy_item(id: String) -> void:
+func _on_shop_feature_buy_button_pressed(btn: Button) -> void:
+	# Buy from legacy SHOP_ITEMS list
+	var id := ""
+	for k in _shop_buttons.keys():
+		if _shop_buttons[k]["button"] == btn:
+			id = String(k)
+			break
+	if id == "":
+		return
 	if unlocks.get(id, false):
 		return
 	var price := int(_shop_buttons[id]["price"])
 	if balance < price:
 		if lbl_result:
-			lbl_result.text = "Not enough balance for %s." % id
+			lbl_result.text = "Not enough balance for " + id + "."
 		return
 	balance -= price
 	unlocks[id] = true
@@ -219,9 +387,100 @@ func _try_buy_item(id: String) -> void:
 	_update_funds_labels()
 	_save_progress()
 	if lbl_result:
-		lbl_result.text = "Purchased '%s' for 🪙%d!" % [id, price]
+		lbl_result.text = "Purchased '" + id + "' for 🪙" + str(price) + "!"
 
-# ----------------- UNLOCK GATING -----------------
+func _refresh_shop_buttons() -> void:
+	for id in _shop_buttons.keys():
+		var b: Button = _shop_buttons[id]["button"]
+		var price := int(_shop_buttons[id]["price"])
+		if unlocks.get(id, false):
+			b.text = "Owned"
+			b.disabled = true
+		else:
+			b.text = "Buy (🪙" + str(price) + ")"
+			b.disabled = balance < price
+
+func _set_shop_visible(v: bool) -> void:
+	if not shop_panel: return
+	shop_panel.visible = v
+	_update_funds_labels()
+	_refresh_shop_buttons()
+
+func _on_shop_open_pressed() -> void:
+	_set_shop_visible(true)
+
+func _on_shop_close_pressed() -> void:
+	_set_shop_visible(false)
+
+# ---- Shop actions for coins / sidebets ----
+func _coin_upgrade_cost(id: String, next_level: int) -> int:
+	var base := int(COIN_DB[id]["unlock"])
+	return int(round(base * max(1, next_level))) # linear
+
+func _side_upgrade_cost(id: String, next_level: int) -> int:
+	var base := int(SIDEBET_DB[id]["unlock"])
+	return int(round(base * (0.5 + 0.5 * max(1, next_level)))) # gentler
+
+func _on_shop_btn_pressed(btn: Button) -> void:
+	var kind := String(btn.get_meta("kind"))
+	var id := String(btn.get_meta("id"))
+	var action := String(btn.get_meta("action"))
+
+	if kind == "coin":
+		if action == "unlock":
+			var cost := int(COIN_DB[id]["unlock"])
+			if balance < cost: return
+			balance -= cost
+			owned_coins[id] = true
+			coin_level[id] = 1
+			if active_coin_id == "":
+				active_coin_id = id
+			_apply_active_coin_stats()
+			_load_coin_textures()
+		elif action == "upgrade":
+			var cur := int(coin_level.get(id, 1))
+			var nxt := cur + 1
+			if nxt > int(COIN_DB[id]["level_max"]): return
+			var cost2 := _coin_upgrade_cost(id, nxt)
+			if balance < cost2: return
+			balance -= cost2
+			coin_level[id] = nxt
+			if active_coin_id == id:
+				_apply_active_coin_stats()
+				_load_coin_textures()
+		elif action == "equip":
+			if owned_coins.get(id, false):
+				active_coin_id = id
+				_apply_active_coin_stats()
+				_load_coin_textures()
+
+	elif kind == "side":
+		if action == "unlock":
+			var cost3 := int(SIDEBET_DB[id]["unlock"])
+			if balance < cost3: return
+			balance -= cost3
+			owned_sides[id] = true
+			side_level[id] = 1
+			if active_side_id == "":
+				active_side_id = id
+		elif action == "upgrade":
+			var cur2 := int(side_level.get(id, 1))
+			var nxt2 := cur2 + 1
+			if nxt2 > int(SIDEBET_DB[id]["level_max"]): return
+			var cost4 := _side_upgrade_cost(id, nxt2)
+			if balance < cost4: return
+			balance -= cost4
+			side_level[id] = nxt2
+		elif action == "equip":
+			if owned_sides.get(id, false):
+				active_side_id = id
+
+	_update_balance()
+	_build_shop_ui()
+	_refresh_feature_visibility()
+	_save_progress()
+
+# ----------------- UNLOCK GATING / VISIBILITY -----------------
 func _apply_unlocks_update_ui() -> void:
 	# Multi-sequence
 	if row_seq: row_seq.visible = unlocks["multiseq"]
@@ -236,14 +495,9 @@ func _apply_unlocks_update_ui() -> void:
 			$BetModal/ChoiceRow.visible = false
 	if choices_root: choices_root.visible = unlocks["multiseq"]
 
-	# Biased coins
-	if row_coin: row_coin.visible = unlocks["biased"]
-	if opt_coin: opt_coin.disabled = not unlocks["biased"]
-	if not unlocks["biased"]:
-		_apply_coin_type(0)  # force Fair
-
-	# Side bets
-	if row_side: row_side.visible = unlocks["side"]
+	# Old coin row is deprecated: hide & disable
+	if row_coin: row_coin.visible = false
+	if opt_coin: opt_coin.disabled = true
 
 	# Risk tiers beyond 2x
 	if btn_double3x: btn_double3x.visible = unlocks["risk"]
@@ -252,11 +506,17 @@ func _apply_unlocks_update_ui() -> void:
 	# Jackpot label
 	if lbl_jackpot: lbl_jackpot.visible = unlocks["jackpot"]
 
+	_refresh_feature_visibility()
+
+func _refresh_feature_visibility() -> void:
+	# Side bet row visible if the player owns at least one side bet
+	if row_side:
+		row_side.visible = owned_sides.size() > 0
+
 # ----------------- LABEL UPDATES -----------------
 func _update_balance() -> void:
 	if lbl_balance:
 		lbl_balance.text = "🪙" + str(balance)
-	# Keep shop buttons accurate if shop is open
 	if shop_panel and shop_panel.visible:
 		_refresh_shop_buttons()
 	_update_funds_labels()
@@ -270,10 +530,25 @@ func _update_jackpot() -> void:
 		lbl_jackpot.text = "Jackpot: 🪙" + str(jackpot)
 
 # ----------------- BUTTONS & CORE FLOW -----------------
-func _on_seq_len_changed(v: int) -> void:
-	seq_len = clamp(v, 1, 5)
+func _on_seq_len_changed(v: float) -> void:
+	seq_len = clamp(int(v), 1, 5)
 	_ensure_predicted_capacity()
 	_sync_choice_buttons()
+
+func _on_pick_heads_pressed() -> void:
+	_set_all_choices("heads")
+
+func _on_pick_tails_pressed() -> void:
+	_set_all_choices("tails")
+
+func _on_double2x_pressed() -> void:
+	_on_double_tier_pressed(2.0, 0.50)
+
+func _on_double3x_pressed() -> void:
+	_on_double_tier_pressed(3.0, 0.3333)
+
+func _on_double5x_pressed() -> void:
+	_on_double_tier_pressed(5.0, 0.20)
 
 func _on_flip_pressed() -> void:
 	if state != GameState.READY:
@@ -288,16 +563,23 @@ func _on_flip_pressed() -> void:
 		lbl_result.text = "Bet exceeds balance."
 		return
 
-	# Side bet (only if unlocked)
-	
-	var side_on = unlocks["side"] and chk_side_same and chk_side_same.button_pressed
-	var side_amt := (int(spin_side_amt.value) if (unlocks["side"] and spin_side_amt) else 0)
-	var total_required := current_bet + (side_amt if side_on else 0)
+	# Side bet (enabled if player owns & equipped something and toggled)
+	var side_on := false
+	if row_side and chk_side_same and chk_side_same.button_pressed and active_side_id != "":
+		side_on = true
+
+	var side_amt := 0
+	if side_on and spin_side_amt:
+		side_amt = int(spin_side_amt.value)
+
+	var total_required := current_bet
+	if side_on:
+		total_required += side_amt
 	if total_required > balance:
 		lbl_result.text = "Not enough balance for bet + side bet."
 		return
 
-	# Lock inputs
+	# Lock inputs & deduct base bet up front
 	balance -= current_bet
 	_update_balance()
 	state = GameState.ANIMATING
@@ -313,7 +595,7 @@ func _on_flip_pressed() -> void:
 		jackpot += int(round(current_bet * JACKPOT_TAX))
 		_update_jackpot()
 
-	# Deduct side bet upfront (if used)
+	# Deduct side bet upfront
 	if side_on and side_amt > 0:
 		balance -= side_amt
 		_update_balance()
@@ -321,9 +603,9 @@ func _on_flip_pressed() -> void:
 	# Run sequence
 	var outcomes: Array[String] = []
 	var L := _get_seq_len()
-	for i in L:
-		lbl_result.text = "Flipping %d/%d…" % [i + 1, L]
-		var o := _flip_once()                 # decide outcome using your coin odds
+	for i in range(L):
+		lbl_result.text = "Flipping " + str(i + 1) + "/" + str(L) + "…"
+		var o := _flip_once()
 		await _animate_coin_flip_to(o, 2 + rng.randi_range(0, 2), 0.4 + rng.randf()*0.25)
 		outcomes.append(o)
 	if flip_bar:
@@ -341,27 +623,35 @@ func _on_flip_pressed() -> void:
 				bonus_mult = 1.25
 		pending_winnings = int(round(current_bet * base_mult * bonus_mult))
 
-	# Resolve side bet (judged on the FIRST flip of this run)
+	# Resolve side bet (rule depends on active_side_id)
 	var side_msg := ""
-	if side_on and last_outcome != "" and L > 0:
-		var hit := (outcomes[0] == last_outcome)
-		if hit:
-			var side_payout := int(round(side_amt * SIDE_MULT))
-			balance += side_payout
-			side_msg = "  (Side bet hit +🪙%d)" % side_payout
+	if side_on:
+		if last_outcome == "":
+			side_msg = "  (Side bet skipped: no last flip)"
 		else:
-			side_msg = "  (Side bet lost -🪙%d)" % side_amt
-		_update_balance()
-	elif side_on and last_outcome == "":
-		side_msg = "  (Side bet skipped: no last flip)"
+			var hit := false
+			var s_lv := int(side_level.get(active_side_id, 1))
+			s_lv = clamp(s_lv, 1, int(SIDEBET_DB[active_side_id]["level_max"]))
+			var mult := float(SIDEBET_DB[active_side_id]["mult"][s_lv - 1])
+
+			if active_side_id == "same_last":
+				hit = (outcomes[0] == last_outcome)
+			elif active_side_id == "same_final":
+				hit = (outcomes[L - 1] == last_outcome)
+
+			if hit:
+				var side_payout := int(round(side_amt * mult))
+				balance += side_payout
+				_update_balance()
+				side_msg = "  (Side bet hit +🪙" + str(side_payout) + ")"
+			else:
+				side_msg = "  (Side bet lost -🪙" + str(side_amt) + ")"
 
 	last_outcome = outcomes[-1]
 
 	if won:
 		win_streak += 1
-		lbl_result.text = "Outcome: %s — You WON 🪙%d! Double or Cash Out?%s" % [
-			_seq_to_text(outcomes), pending_winnings, side_msg
-		]
+		lbl_result.text = "Outcome: " + _seq_to_text(outcomes) + " — You WON 🪙" + str(pending_winnings) + "! Double or Cash Out?" + side_msg
 		# Jackpot payouts (only if unlocked)
 		if unlocks["jackpot"]:
 			if L >= 5 and jackpot > 0:
@@ -373,11 +663,9 @@ func _on_flip_pressed() -> void:
 		row_risk.visible = true
 		state = GameState.DOUBLE_DECISION
 	else:
-		# Lose base bet
+		# Lose base bet (already deducted)
 		_update_balance()
-		lbl_result.text = "Outcome: %s — You LOST 🪙%d.%s" % [
-			_seq_to_text(outcomes), current_bet, side_msg
-		]
+		lbl_result.text = "Outcome: " + _seq_to_text(outcomes) + " — You LOST 🪙" + str(current_bet) + "." + side_msg
 		win_streak = 0
 		don_streak = 0
 		pending_winnings = 0
@@ -390,7 +678,7 @@ func _on_cashout_pressed() -> void:
 		return
 	balance += pending_winnings
 	_update_balance()
-	lbl_result.text = "Banked 🪙%d. Streak reset." % pending_winnings
+	lbl_result.text = "Banked 🪙" + str(pending_winnings) + ". Streak reset."
 	pending_winnings = 0
 	row_risk.visible = false
 	state = GameState.READY
@@ -412,11 +700,11 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 		flip_bar.visible = false
 
 	var hit := rng.randf() < success_prob
-	
+
 	if hit:
 		pending_winnings = int(round(pending_winnings * mult))
 		don_streak += 1
-		lbl_result.text = "Success! Winnings now 🪙%d. Double again or Cash Out?" % pending_winnings
+		lbl_result.text = "Success! Winnings now 🪙" + str(pending_winnings) + ". Double again or Cash Out?"
 
 		# Jackpot for huge DoN streaks (only if unlocked)
 		if unlocks["jackpot"] and don_streak >= 10 and jackpot > 0:
@@ -429,7 +717,7 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 		row_risk.visible = true
 		state = GameState.DOUBLE_DECISION
 	else:
-		lbl_result.text = "Busted! You lost the 🪙%d pot." % pending_winnings
+		lbl_result.text = "Busted! You lost the 🪙" + str(pending_winnings) + " pot."
 		pending_winnings = 0
 		don_streak = 0
 		state = GameState.READY
@@ -437,58 +725,98 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 	_save_progress()
 
 func _on_one_bet_pressed():
-	row_seq.visible = false
-	$BetModal/PickRow.visible = true
-	spin_seq_len.value = 1
+	if row_seq:
+		row_seq.visible = false
+	var pr := get_node_or_null("BetModal/PickRow")
+	if pr:
+		pr.visible = true
+	if spin_seq_len:
+		spin_seq_len.value = 1
 
 func _on_multi_bet_pressed():
-	row_seq.visible = true
-	$BetModal/PickRow.visible = false
+	if row_seq:
+		row_seq.visible = true
+	var pr := get_node_or_null("BetModal/PickRow")
+	if pr:
+		pr.visible = false
 
 # ----------------- SAVE / LOAD -----------------
 func _save_progress() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("meta", "balance", balance)
 	cfg.set_value("meta", "jackpot", jackpot)
-	for item in SHOP_ITEMS:
-		cfg.set_value("unlocks", item.id, unlocks[item.id])
+
+	cfg.set_value("equip", "coin", active_coin_id)
+	cfg.set_value("equip", "side", active_side_id)
+
+	cfg.set_value("coins", "owned", owned_coins)
+	cfg.set_value("coins", "levels", coin_level)
+
+	cfg.set_value("sides", "owned", owned_sides)
+	cfg.set_value("sides", "levels", side_level)
+
+	cfg.set_value("features", "unlocks", unlocks)
+
 	cfg.save(SAVE_PATH)
 
 func _load_progress() -> void:
 	var cfg := ConfigFile.new()
-	var err := cfg.load(SAVE_PATH)
-	if err != OK:
+	if cfg.load(SAVE_PATH) != OK:
 		return
 	balance = int(cfg.get_value("meta","balance", balance))
 	jackpot = int(cfg.get_value("meta","jackpot", jackpot))
-	for item in SHOP_ITEMS:
-		unlocks[item.id] = bool(cfg.get_value("unlocks", item.id, unlocks[item.id]))
+
+	active_coin_id = String(cfg.get_value("equip","coin", active_coin_id))
+	active_side_id = String(cfg.get_value("equip","side", active_side_id))
+
+	var oc = cfg.get_value("coins","owned", owned_coins)
+	if oc is Dictionary:
+		owned_coins = oc
+	var clv = cfg.get_value("coins","levels", coin_level)
+	if clv is Dictionary:
+		coin_level = clv
+
+	var os = cfg.get_value("sides","owned", owned_sides)
+	if os is Dictionary:
+		owned_sides = os
+	var slv = cfg.get_value("sides","levels", side_level)
+	if slv is Dictionary:
+		side_level = slv
+
+	var u = cfg.get_value("features","unlocks", unlocks)
+	if u is Dictionary:
+		unlocks = u
 
 # ----------------- HELPERS -----------------
 func _set_inputs_enabled(enabled: bool) -> void:
 	btn_flip.disabled = not enabled
 	spin_bet.editable = enabled
-	if spin_seq_len: spin_seq_len.editable = enabled and unlocks["multiseq"]
+	if spin_seq_len:
+		spin_seq_len.editable = enabled and unlocks["multiseq"]
 	if choices_root:
 		for c in choices_root.get_children():
 			if c is Button:
 				(c as Button).disabled = not enabled
-	if opt_coin: opt_coin.disabled = (not unlocks["biased"]) or (not enabled)
-	if chk_side_same: chk_side_same.disabled = (not unlocks["side"]) or (not enabled)
-	if spin_side_amt: spin_side_amt.editable = enabled and unlocks["side"]
+	if chk_side_same:
+		chk_side_same.disabled = not enabled
+	if spin_side_amt:
+		spin_side_amt.editable = enabled
 
 func _set_all_choices(val: String) -> void:
 	var L := _get_seq_len()
 	_ensure_predicted_capacity()
-	for i in L:
+	for i in range(L):
 		predicted_seq[i] = val
 	_sync_choice_buttons()
 
 func _get_seq_len() -> int:
-	return int(spin_seq_len.value) if spin_seq_len else seq_len
+	if spin_seq_len:
+		return int(spin_seq_len.value)
+	return seq_len
 
 func _sync_choice_buttons() -> void:
-	if not choices_root: return
+	if not choices_root:
+		return
 	var L := _get_seq_len()
 	var i := 0
 	for c in choices_root.get_children():
@@ -496,22 +824,32 @@ func _sync_choice_buttons() -> void:
 			var b: Button = c
 			b.visible = i < L
 			if i < L:
-				b.text = "            "
-				b.icon = preload("res://images/siegecoin.png") if predicted_seq[i] == "heads" else preload("res://images/siegecoin_tails.png")
+				b.text = "         "
+				if predicted_seq[i] == "heads":
+					b.icon = preload("res://images/siegecoin.png")
+				else:
+					b.icon = preload("res://images/siegecoin_tails.png")
 			i += 1
 
 func _ensure_choice_buttons() -> void:
-	if not choices_root: return
+	if not choices_root:
+		return
 	var i := 0
 	for c in choices_root.get_children():
 		if c is Button:
 			var idx := i
-			(c as Button).pressed.connect(func(): _cycle_choice_button(idx))
+			(c as Button).pressed.connect(Callable(self,"_on_choice_button_pressed").bind(idx))
 			i += 1
+
+func _on_choice_button_pressed(idx: int) -> void:
+	_cycle_choice_button(idx)
 
 func _cycle_choice_button(idx: int) -> void:
 	_ensure_predicted_capacity()
-	predicted_seq[idx] = ("tails" if predicted_seq[idx] == "heads" else "heads")
+	if predicted_seq[idx] == "heads":
+		predicted_seq[idx] = "tails"
+	else:
+		predicted_seq[idx] = "heads"
 	_sync_choice_buttons()
 
 func _ensure_predicted_capacity() -> void:
@@ -520,26 +858,41 @@ func _ensure_predicted_capacity() -> void:
 		predicted_seq.append("heads")
 	seq_len = L
 
+# --- Coin application / textures ---
+func _apply_active_coin_stats() -> void:
+	if active_coin_id == "" or not COIN_DB.has(active_coin_id):
+		coin_heads_bias = 0.5
+		coin_single_mult = 2.0
+		return
+	var db = COIN_DB[active_coin_id]
+	var lv := int(coin_level.get(active_coin_id, 1))
+	lv = clamp(lv, 1, int(db["level_max"]))
+	coin_heads_bias = float(db["bias"][lv - 1])
+	coin_single_mult = float(db["mult"][lv - 1])
+
+func _load_coin_textures() -> void:
+	if not coin or active_coin_id == "" or not COIN_DB.has(active_coin_id):
+		return
+	var db = COIN_DB[active_coin_id]
+	var lv = clamp(int(coin_level.get(active_coin_id,1)), 1, int(db["level_max"]))
+	var h_path := String(db["tex_heads"][lv - 1])
+	var t_path := String(db["tex_tails"][lv - 1])
+	if ResourceLoader.exists(h_path):
+		tex_heads = load(h_path) as Texture2D
+	if ResourceLoader.exists(t_path):
+		tex_tails = load(t_path) as Texture2D
+	if tex_heads and coin.texture == null:
+		coin.texture = tex_heads
+
 func _on_coin_type_changed(id: int) -> void:
-	_apply_coin_type(id)
+	# Deprecated — coin selection now via Shop equip; keep no-op for safety.
+	pass
 
-func _apply_coin_type(id: int) -> void:
-	match id:
-		0:
-			coin_heads_bias = 0.5
-			coin_single_mult = 2.0
-		1:
-			coin_heads_bias = 0.6
-			coin_single_mult = 1.8
-		2:
-			coin_heads_bias = 0.4
-			coin_single_mult = 2.5
-		_:
-			coin_heads_bias = 0.5
-			coin_single_mult = 2.0
-
+# --- RNG / matching ---
 func _flip_once() -> String:
-	return "heads" if rng.randf() < coin_heads_bias else "tails"
+	if rng.randf() < coin_heads_bias:
+		return "heads"
+	return "tails"
 
 func _sequence_matches(pred: Array[String], outc: Array[String], L: int) -> bool:
 	for i in range(L):
@@ -553,6 +906,7 @@ func _seq_to_text(seq: Array[String]) -> String:
 		parts.append(s.substr(0,1).to_upper())
 	return ", ".join(PackedStringArray(parts))
 
+# --- Progress fallback ---
 func _animate_progress(duration: float) -> void:
 	var t := 0.0
 	var last := Time.get_ticks_msec()
@@ -565,6 +919,7 @@ func _animate_progress(duration: float) -> void:
 		if flip_bar:
 			flip_bar.value = clamp((t / duration) * flip_bar.max_value, 0.0, flip_bar.max_value)
 
+# --- Coin flip animation (safe, no lambdas) ---
 func _current_coin_face() -> String:
 	if not coin or not coin.texture:
 		return ""
@@ -575,69 +930,67 @@ func _current_coin_face() -> String:
 	return ""
 
 func _set_coin_face(face: String) -> void:
-	if not coin: return
+	if not coin:
+		return
 	if face == "heads" and tex_heads:
 		coin.texture = tex_heads
 	elif face == "tails" and tex_tails:
 		coin.texture = tex_tails
-	#coin.scale = Vector2(130. / coin.texture.get_width(),120. / coin.texture.get_height())
 
-# Flip animation that ends on the requested outcome.
-# spins = how many “full flips” to show before the landing half-flip.
-# duration = total time for the whole animation (seconds).
-func _animate_coin_flip_to(outcome: String, spins: int = 3, duration: float = 0.6) -> void:
-	if not coin or (not tex_heads) or (not tex_tails):
-		# fallback to old progress bar if textures/sprite missing
-		if flip_bar:
-			await _animate_progress(duration)
-		else:
-			await get_tree().create_timer(duration).timeout
-		_set_coin_face(outcome)
-		return
-
-	# Ensure we start on a valid face
-	if _current_coin_face() == "":
+func _swap_coin_face() -> void:
+	var now := _current_coin_face()
+	if now == "heads":
+		_set_coin_face("tails")
+	else:
 		_set_coin_face("heads")
 
-	var tween := create_tween()
-	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
-	# We animate scale.x: -> 0 (edge) -> 1 (flat), swapping texture at the edge.
+func _animate_coin_flip_to(outcome: String, spins: int = 3, duration: float = 0.6) -> void: 
+	if not coin or (not tex_heads) or (not tex_tails): 
+		# fallback to old progress bar if textures/sprite missing 
+		if flip_bar: 
+			await _animate_progress(duration) 
+		else: 
+			await get_tree().create_timer(duration).timeout 
+			_set_coin_face(outcome) 
+			return 
+	# Ensure we start on a valid face 
+	if _current_coin_face() == "": 
+		_set_coin_face("heads") 
+	var tween := create_tween() 
+	tween.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT) 
+	# We animate scale.x: -> 0 (edge) -> 1 (flat), swapping texture at the edge. 
 	# Each “flip” is two halves. We’ll do (spins) full flips + a final half if needed to land on the outcome.
-	var half := duration / float(spins * 2 + 1)  # +1 reserved for the landing half
-	coin.scale = Vector2(130. / coin.texture.get_width(),120. / coin.texture.get_height())
+	var half := duration / float(spins * 2 + 1) # +1 reserved for the landing half 
+	coin.scale = Vector2(130. / coin.texture.get_width(),120. / coin.texture.get_height()) 
+	# Do the showy spins (texture swaps each half) 
+	for i in spins: 
+		tween.tween_callback(func(): 
+		# swap face mid-flip 
+			var now := _current_coin_face() 
+			_set_coin_face( "tails" if now == "heads" else "heads" )) 
+		tween.tween_property(coin, "scale:y", 0.001, half) 
+		# squash to edge 
+		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half) 
+		# back to flat 
+		# If the current face isn’t the desired outcome, do one landing half-flip to set it 
+	if _current_coin_face() != outcome and spins % 2 == 0 or _current_coin_face() == outcome and spins % 2 == 1: 
+		tween.tween_callback(func(): _set_coin_face(outcome)) 
+		tween.tween_property(coin, "scale:y", 0.001, half) 
+		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half) 
+		# Optional: tiny settle bounce 
+		#tween.tween_property(coin, "scale:y", 115. / coin.texture.get_height(), 0.06) 
+		#tween.play() 
+		#await tween.finished 
+		#tween.stop() 
+		#tween.tween_property(coin, "scale:y", 120. / coin.texture.get_height(), 0.06) 
+		#tween.play() 
+	await tween.finished 
+	tween.kill() 
 	
-
-	# Do the showy spins (texture swaps each half)
-	for i in spins:
-		tween.tween_callback(func():
-			# swap face mid-flip
-			var now := _current_coin_face()
-			_set_coin_face( "tails" if now == "heads" else "heads" ))
-		tween.tween_property(coin, "scale:y", 0.001, half)  # squash to edge
-		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half)   # back to flat
-
-	# If the current face isn’t the desired outcome, do one landing half-flip to set it
-	if _current_coin_face() != outcome and spins % 2 == 0 or _current_coin_face() == outcome and spins % 2 == 1:
-		tween.tween_callback(func(): _set_coin_face(outcome))
-		tween.tween_property(coin, "scale:y", 0.001, half)
-		tween.tween_property(coin, "scale:y", get_coin_dims(outcome).y, half)
-
-	# Optional: tiny settle bounce
-	#tween.tween_property(coin, "scale:y", 115. / coin.texture.get_height(), 0.06)
-	#tween.play()
-	#await tween.finished
-	#tween.stop()
-	#tween.tween_property(coin, "scale:y", 120. / coin.texture.get_height(), 0.06)
-	#tween.play()
-
-	await tween.finished
-	tween.kill()
-
-func get_coin_dims(result="tails"):
-	if result == "heads":
-		print("he")
-		return Vector2(130./512, 130./473)
-	else:
-		print("ta")
+func get_coin_dims(result="tails"): 
+	if result == "heads": 
+		print("he") 
+		return Vector2(130./512, 130./473) 
+	else: 
+		print("ta") 
 		return Vector2(130./512, 130./512)
