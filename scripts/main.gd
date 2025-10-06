@@ -48,15 +48,15 @@ const SHOP_ITEMS := [
 # ==== NEW: COINS & SIDE BETS (unlock + upgrade + equip) ====
 # Replace paths with your art; ResourceLoader.exists() checks at runtime.
 const COIN_DB := {
-	"aurora": {
-		"name":"Aurora (Fair)", "unlock":100, "level_max":5,
+	"yellow": {
+		"name":"Yellow (Fair)", "unlock":100, "level_max":5,
 		"bias":[0.50,0.50,0.50,0.50,0.50],
 		"mult":[2.00,2.05,2.10,2.15,2.20],
 		"tex_heads":[
-			"res://art/aurora/h1.png","res://art/aurora/h2.png","res://art/aurora/h3.png","res://art/aurora/h4.png","res://art/aurora/h5.png"
+			"res://images/siegecoin.png"
 		],
 		"tex_tails":[
-			"res://art/aurora/t1.png","res://art/aurora/t2.png","res://art/aurora/t3.png","res://art/aurora/t4.png","res://art/aurora/t5.png"
+			"res://images/siegecoin_tails.png"
 		]
 	},
 	"lucky": {
@@ -95,8 +95,8 @@ const SIDEBET_DB := {
 }
 
 # Persistent ownership/levels (saved)
-var owned_coins : Dictionary = {}     # {"aurora": true, ...}
-var coin_level  : Dictionary = {}     # {"aurora": 1..level_max}
+var owned_coins : Dictionary = {}     # {"yellow": true, ...}
+var coin_level  : Dictionary = {}     # {"yellow": 1..level_max}
 var owned_sides : Dictionary = {}     # {"same_last": true, ...}
 var side_level  : Dictionary = {}     # {"same_last": 1..level_max}
 
@@ -147,6 +147,8 @@ const SAVE_PATH := "user://save.cfg"
 @onready var lbl_funds_shop: Label           = get_node_or_null("Shop/FundsLabel")
 @onready var btn_shop_close: Button          = get_node_or_null("Shop/CloseBtn")
 
+@onready var bailout_btn: Button = $Bailout
+
 @onready var coin: Sprite2D = $Coin
 var tex_heads: Texture2D = preload("res://images/siegecoin.png")
 var tex_tails: Texture2D = preload("res://images/siegecoin_tails.png")
@@ -165,9 +167,9 @@ func _ready() -> void:
 
 	# Ensure a default coin if none owned
 	if owned_coins.size() == 0:
-		owned_coins["aurora"] = true
-		coin_level["aurora"] = 1
-		active_coin_id = "aurora"
+		owned_coins["yellow"] = true
+		coin_level["yellow"] = 1
+		active_coin_id = "yellow"
 
 	_apply_active_coin_stats()
 	_load_coin_textures()
@@ -178,6 +180,8 @@ func _ready() -> void:
 	_build_shop_ui()
 	if lbl_result:
 		lbl_result.text = "Set bet, upgrade/equip in the Shop, then Flip."
+	if balance == 0:
+		bailout_btn.visible = true
 
 # ----------------- INIT / WIRING -----------------
 func _wire_base_ui() -> void:
@@ -380,6 +384,7 @@ func _on_shop_feature_buy_button_pressed(btn: Button) -> void:
 			lbl_result.text = "Not enough balance for " + id + "."
 		return
 	balance -= price
+	if balance == 0: bailout_btn.visible = true
 	unlocks[id] = true
 	_update_balance()
 	_apply_unlocks_update_ui()
@@ -431,6 +436,7 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost := int(COIN_DB[id]["unlock"])
 			if balance < cost: return
 			balance -= cost
+			if balance == 0: bailout_btn.visible = true
 			owned_coins[id] = true
 			coin_level[id] = 1
 			if active_coin_id == "":
@@ -444,6 +450,7 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost2 := _coin_upgrade_cost(id, nxt)
 			if balance < cost2: return
 			balance -= cost2
+			if balance == 0: bailout_btn.visible = true
 			coin_level[id] = nxt
 			if active_coin_id == id:
 				_apply_active_coin_stats()
@@ -459,6 +466,7 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost3 := int(SIDEBET_DB[id]["unlock"])
 			if balance < cost3: return
 			balance -= cost3
+			if balance == 0: bailout_btn.visible = true
 			owned_sides[id] = true
 			side_level[id] = 1
 			if active_side_id == "":
@@ -470,6 +478,7 @@ func _on_shop_btn_pressed(btn: Button) -> void:
 			var cost4 := _side_upgrade_cost(id, nxt2)
 			if balance < cost4: return
 			balance -= cost4
+			if balance == 0: bailout_btn.visible = true
 			side_level[id] = nxt2
 		elif action == "equip":
 			if owned_sides.get(id, false):
@@ -581,6 +590,7 @@ func _on_flip_pressed() -> void:
 
 	# Lock inputs & deduct base bet up front
 	balance -= current_bet
+	if balance == 0: bailout_btn.visible = true
 	_update_balance()
 	state = GameState.ANIMATING
 	_set_inputs_enabled(false)
@@ -598,6 +608,7 @@ func _on_flip_pressed() -> void:
 	# Deduct side bet upfront
 	if side_on and side_amt > 0:
 		balance -= side_amt
+		if balance == 0: bailout_btn.visible = true
 		_update_balance()
 
 	# Run sequence
@@ -874,19 +885,15 @@ func _load_coin_textures() -> void:
 	if not coin or active_coin_id == "" or not COIN_DB.has(active_coin_id):
 		return
 	var db = COIN_DB[active_coin_id]
-	var lv = clamp(int(coin_level.get(active_coin_id,1)), 1, int(db["level_max"]))
-	var h_path := String(db["tex_heads"][lv - 1])
-	var t_path := String(db["tex_tails"][lv - 1])
+	#var lv = clamp(int(coin_level.get(active_coin_id,1)), 1, int(db["level_max"]))
+	var h_path := String(db["tex_heads"][0])
+	var t_path := String(db["tex_tails"][0])
 	if ResourceLoader.exists(h_path):
 		tex_heads = load(h_path) as Texture2D
 	if ResourceLoader.exists(t_path):
 		tex_tails = load(t_path) as Texture2D
 	if tex_heads and coin.texture == null:
 		coin.texture = tex_heads
-
-func _on_coin_type_changed(id: int) -> void:
-	# Deprecated — coin selection now via Shop equip; keep no-op for safety.
-	pass
 
 # --- RNG / matching ---
 func _flip_once() -> String:
@@ -994,3 +1001,10 @@ func get_coin_dims(result="tails"):
 	else: 
 		print("ta") 
 		return Vector2(130./512, 130./512)
+
+
+func _on_bailout_pressed() -> void:
+	balance += 1000
+	_update_balance()
+	bailout_btn.visible = false
+	_save_progress()
