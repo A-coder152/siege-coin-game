@@ -8,6 +8,10 @@ can also double or nothing, get some meta bets, jackpots and streaks... truly a 
 
 the shop is there to make your gambling unfairly good. use at your own risk. 
 
+### theme integration
+
+the whole game is about flipping coins and seeing how it goes lol
+
 ### how to play
 
 use the itch link bud 
