@@ -41,7 +41,7 @@ var unlocks := {
 const SHOP_ITEMS := [
 	{"id":"streaks","name":"Streak Bonuses","price":100,"desc":"Bonus payout on win streaks."},
 	{"id":"multiseq","name":"Multi-Flip Predictions","price":200,"desc":"Predict 2–5 flips for higher multipliers."},
-	{"id":"risk","name":"Risk-Tier DoN","price":150,"desc":"Unlock 3x and 5x double-or-nothing tiers."},
+	{"id":"risk","name":"Risk-Tier DoN","price":150,"desc":"Unlock 4x and 8x double-or-nothing tiers."},
 	{"id":"jackpot","name":"Jackpot","price":250,"desc":"A growing pot that pays on rare feats."}
 ]
 
@@ -134,8 +134,8 @@ const SAVE_PATH := "user://save.cfg"
 
 @onready var row_risk: Control           = $RiskRow
 @onready var btn_double2x: Button        = get_node_or_null("RiskRow/Double2x")
-@onready var btn_double3x: Button        = get_node_or_null("RiskRow/Double3x")
-@onready var btn_double5x: Button        = get_node_or_null("RiskRow/Double5x")
+@onready var btn_double4x: Button        = get_node_or_null("RiskRow/Double4x")
+@onready var btn_double8x: Button        = get_node_or_null("RiskRow/Double8x")
 @onready var btn_cashout: Button         = $RiskRow/CashOutBtn
 
 # Shop UI
@@ -195,10 +195,10 @@ func _wire_base_ui() -> void:
 
 	if btn_double2x:
 		btn_double2x.pressed.connect(_on_double2x_pressed)
-	if btn_double3x:
-		btn_double3x.pressed.connect(_on_double3x_pressed)
-	if btn_double5x:
-		btn_double5x.pressed.connect(_on_double5x_pressed)
+	if btn_double4x:
+		btn_double4x.pressed.connect(_on_double4x_pressed)
+	if btn_double8x:
+		btn_double8x.pressed.connect(_on_double8x_pressed)
 
 	if btn_shop:
 		btn_shop.pressed.connect(_on_shop_open_pressed)
@@ -509,8 +509,8 @@ func _apply_unlocks_update_ui() -> void:
 	if opt_coin: opt_coin.disabled = true
 
 	# Risk tiers beyond 2x
-	if btn_double3x: btn_double3x.visible = unlocks["risk"]
-	if btn_double5x: btn_double5x.visible = unlocks["risk"]
+	if btn_double4x: btn_double4x.visible = unlocks["risk"]
+	if btn_double8x: btn_double8x.visible = unlocks["risk"]
 
 	# Jackpot label
 	if lbl_jackpot: lbl_jackpot.visible = unlocks["jackpot"]
@@ -553,10 +553,10 @@ func _on_pick_tails_pressed() -> void:
 func _on_double2x_pressed() -> void:
 	_on_double_tier_pressed(2.0, 0.50)
 
-func _on_double3x_pressed() -> void:
+func _on_double4x_pressed() -> void:
 	_on_double_tier_pressed(3.0, 0.3333)
 
-func _on_double5x_pressed() -> void:
+func _on_double8x_pressed() -> void:
 	_on_double_tier_pressed(5.0, 0.20)
 
 func _on_flip_pressed() -> void:
@@ -662,7 +662,7 @@ func _on_flip_pressed() -> void:
 
 	if won:
 		win_streak += 1
-		lbl_result.text = "Outcome: " + _seq_to_text(outcomes) + " — You WON 🪙" + str(pending_winnings) + "! Double or Cash Out?" + side_msg
+		lbl_result.text = "Outcome: " + _seq_to_text(outcomes) + " — You WON 🪙" + str(pending_winnings) + "! Multiply or Cash Out? (Heads: Success)" + side_msg
 		# Jackpot payouts (only if unlocked)
 		if unlocks["jackpot"]:
 			if L >= 5 and jackpot > 0:
@@ -707,15 +707,16 @@ func _on_double_tier_pressed(mult: float, success_prob: float) -> void:
 	lbl_result.text = "Risking it…"
 	if flip_bar:
 		flip_bar.visible = true
-		await _animate_progress(0.5)
 		flip_bar.visible = false
 
 	var hit := rng.randf() < success_prob
+	await _animate_coin_flip_to("heads" if hit else "tails", 2 + rng.randi_range(0, 2), 0.4 + rng.randf()*0.25)
+	
 
 	if hit:
 		pending_winnings = int(round(pending_winnings * mult))
 		don_streak += 1
-		lbl_result.text = "Success! Winnings now 🪙" + str(pending_winnings) + ". Double again or Cash Out?"
+		lbl_result.text = "Success! Winnings now 🪙" + str(pending_winnings) + ". Double again or Cash Out? (Heads: Success)"
 
 		# Jackpot for huge DoN streaks (only if unlocked)
 		if unlocks["jackpot"] and don_streak >= 10 and jackpot > 0:
